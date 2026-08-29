@@ -1,0 +1,282 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <world name="default">
+
+    <include>
+      <uri>model://ground_plane</uri>
+    </include>
+
+    <include>
+      <uri>model://sun</uri>
+    </include>
+
+    <scene>
+      <shadows>false</shadows>
+    </scene>
+
+    <!-- ========================= -->
+    <!-- ROS GAZEBO PLUGIN -->
+    <!-- ========================= -->
+
+    
+    <!-- ========================= -->
+    <!-- PORT FLOOR -->
+    <!-- ========================= -->
+
+    <model name="port_floor">
+      <static>true</static>
+
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>20 14 0.1</size>
+            </box>
+          </geometry>
+
+          <pose>0 0 0.05 0 0 0</pose>
+        </collision>
+
+        <visual name="visual">
+
+          <geometry>
+            <box>
+              <size>20 14 0.1</size>
+            </box>
+          </geometry>
+
+          <pose>0 0 0.05 0 0 0</pose>
+
+          <material>
+            <ambient>0.25 0.25 0.25 1</ambient>
+            <diffuse>0.35 0.35 0.35 1</diffuse>
+          </material>
+
+        </visual>
+
+      </link>
+
+      <pose>0 0 0 0 0 0</pose>
+
+    </model>
+
+
+    <!-- ========================= -->
+    <!-- CONTAINER 1 -->
+    <!-- ========================= -->
+
+    <model name="container_1">
+      <static>true</static>
+
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>2.4 1.2 1.2</size>
+            </box>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+
+          <geometry>
+            <box>
+              <size>2.4 1.2 1.2</size>
+            </box>
+          </geometry>
+
+          <material>
+            <ambient>0.1 0.4 0.8 1</ambient>
+            <diffuse>0.1 0.4 0.8 1</diffuse>
+          </material>
+
+        </visual>
+
+      </link>
+
+      <pose>4 3 0.6 0 0 0</pose>
+
+    </model>
+
+
+    <!-- ========================= -->
+    <!-- CONTAINER 2 -->
+    <!-- ========================= -->
+
+    <model name="container_2">
+      <static>true</static>
+
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>2.4 1.2 1.2</size>
+            </box>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+
+          <geometry>
+            <box>
+              <size>2.4 1.2 1.2</size>
+            </box>
+          </geometry>
+
+          <material>
+            <ambient>0.8 0.2 0.1 1</ambient>
+            <diffuse>0.8 0.2 0.1 1</diffuse>
+          </material>
+
+        </visual>
+
+      </link>
+
+      <pose>4 1.5 0.6 0 0 0</pose>
+
+    </model>
+
+
+    <!-- ========================= -->
+    <!-- CONTAINER 3 -->
+    <!-- ========================= -->
+
+    <model name="container_3">
+      <static>true</static>
+
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>2.4 1.2 1.2</size>
+            </box>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+
+          <geometry>
+            <box>
+              <size>2.4 1.2 1.2</size>
+            </box>
+          </geometry>
+
+          <material>
+            <ambient>0.1 0.7 0.2 1</ambient>
+            <diffuse>0.1 0.7 0.2 1</diffuse>
+          </material>
+
+        </visual>
+
+      </link>
+
+      <pose>4 0 0.6 0 0 0</pose>
+
+    </model>
+
+
+    <!-- ========================= -->
+    <!-- WALL / QUAI -->
+    <!-- ========================= -->
+
+    <model name="quai_wall">
+      <static>true</static>
+
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>20 0.5 1</size>
+            </box>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+
+          <geometry>
+            <box>
+              <size>20 0.5 1</size>
+            </box>
+          </geometry>
+
+          <material>
+            <ambient>0.15 0.15 0.15 1</ambient>
+            <diffuse>0.2 0.2 0.2 1</diffuse>
+          </material>
+
+        </visual>
+
+      </link>
+
+      <pose>0 -6 0.5 0 0 0</pose>
+
+    </model>
+
+
+    <!-- ========================= -->
+    <!-- PARKING OBSTACLE -->
+    <!-- ========================= -->
+
+    <model name="parking_obstacle">
+      <static>true</static>
+
+      <link name="link">
+
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>2 2 0.5</size>
+            </box>
+          </geometry>
+        </collision>
+
+        <visual name="visual">
+
+          <geometry>
+            <box>
+              <size>2 2 0.5</size>
+            </box>
+          </geometry>
+
+          <material>
+            <ambient>0.5 0.5 0.5 1</ambient>
+            <diffuse>0.6 0.6 0.6 1</diffuse>
+          </material>
+
+        </visual>
+
+      </link>
+
+      <pose>-4 3 0.25 0 0 0</pose>
+
+    </model>
+
+
+    <!-- ========================= -->
+    <!-- CAMERA VIEW -->
+    <!-- ========================= -->
+
+    <gui fullscreen="0">
+
+      <camera name="user_camera">
+
+        <pose>
+          0 -18 16 0 0.65 1.57
+        </pose>
+
+        <view_controller>orbit</view_controller>
+
+        <projection_type>perspective</projection_type>
+
+      </camera>
+
+    </gui>
+
+  </world>
+
+</sdf>

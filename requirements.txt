@@ -1,0 +1,18 @@
+fastapi
+uvicorn
+python-jose[cryptography]
+python-multipart
+httpx
+paho-mqtt
+sqlalchemy
+scikit-learn
+pandas
+websockets
+fpdf2
+passlib[bcrypt]
+bcrypt<4
+# ROS 2 Humble's launch_testing plugin still implements pytest's pre-8 hook
+# signature.  Keep the test runner compatible so `python -m pytest -q` works
+# while ROS2 plugins remain installed.
+pytest>=7.4,<8
+python-dotenv

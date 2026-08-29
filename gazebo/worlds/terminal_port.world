@@ -1,0 +1,79 @@
+<?xml version="1.0" ?>
+<sdf version="1.7">
+  <world name="terminal_tanger_med">
+    <light type="directional" name="sun">
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.9 0.9 0.8 1</diffuse>
+      <specular>0.1 0.1 0.1 1</specular>
+    </light>
+
+    <!-- Sol -->
+    <model name="ground">
+      <static>true</static>
+      <link name="link">
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>60 60</size></plane></geometry>
+          <material><ambient>0.2 0.2 0.2</ambient><diffuse>0.3 0.3 0.3</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Quai -->
+    <model name="quai"><static>true</static><pose>0 10 0.2 0 0 0</pose>
+      <link name="link"><visual name="visual"><geometry><box><size>30 6 0.4</size></box></geometry><material><ambient>0.5 0.5 0.5</ambient><diffuse>0.7 0.7 0.7</diffuse></material></visual></link>
+    </model>
+
+    <!-- Conteneurs (6 boîtes) -->
+    <model name="container_A1"><static>true</static><pose>2 10 0.5 0 0 0</pose><link name="link"><visual name="visual"><geometry><box><size>2 1 2</size></box></geometry><material><ambient>0.8 0.2 0.2</ambient></material></visual></link></model>
+    <model name="container_A2"><static>true</static><pose>4.5 10 0.5 0 0 0</pose><link name="link"><visual name="visual"><geometry><box><size>2 1 2</size></box></geometry><material><ambient>0.2 0.8 0.2</ambient></material></visual></link></model>
+    <model name="container_A3"><static>true</static><pose>7 10 0.5 0 0 0</pose><link name="link"><visual name="visual"><geometry><box><size>2 1 2</size></box></geometry><material><ambient>0.2 0.2 0.8</ambient></material></visual></link></model>
+    <model name="container_B1"><static>true</static><pose>2 11.5 0.5 0 0 0</pose><link name="link"><visual name="visual"><geometry><box><size>2 1 2</size></box></geometry><material><ambient>0.8 0.8 0.2</ambient></material></visual></link></model>
+    <model name="container_B2"><static>true</static><pose>4.5 11.5 0.5 0 0 0</pose><link name="link"><visual name="visual"><geometry><box><size>2 1 2</size></box></geometry><material><ambient>0.8 0.5 0.2</ambient></material></visual></link></model>
+    <model name="container_B3"><static>true</static><pose>7 11.5 0.5 0 0 0</pose><link name="link"><visual name="visual"><geometry><box><size>2 1 2</size></box></geometry><material><ambient>0.5 0.5 0.5</ambient></material></visual></link></model>
+
+    <!-- Caméra (boîte) -->
+    <model name="camera_Q01"><static>true</static><pose>9 10 1.5 0 0 0</pose>
+      <link name="link"><visual name="visual"><geometry><box><size>0.3 0.3 0.3</size></box></geometry><material><ambient>0.1 0.1 0.1</ambient></material></visual></link>
+    </model>
+
+    <!-- Route -->
+    <model name="route"><static>true</static><pose>0 3 0.05 0 0 0</pose>
+      <link name="link"><visual name="visual"><geometry><box><size>30 1.5 0.1</size></box></geometry><material><ambient>0.2 0.2 0.2</ambient></material></visual></link>
+    </model>
+
+    <!-- Station humidité (boîte au lieu d'un cylindre) -->
+    <model name="humidity_station"><static>true</static><pose>14 3 0.15 0 0 0</pose>
+      <link name="link"><visual name="visual"><geometry><box><size>0.2 0.2 0.3</size></box></geometry><material><ambient>0 0 1</ambient></material></visual></link>
+    </model>
+
+    <!-- Entrepôt -->
+    <model name="warehouse"><static>true</static><pose>18 14 2.5 0 0 0</pose>
+      <link name="link"><visual name="visual"><geometry><box><size>6 5 5</size></box></geometry><material><ambient>0.7 0.5 0.2</ambient></material></visual></link>
+    </model>
+
+    <!-- Détecteur de fumée (boîte au lieu d'une sphère) -->
+    <model name="smoke_detector"><static>true</static><pose>18 14 2.9 0 0 0</pose>
+      <link name="link"><visual name="visual"><geometry><box><size>0.3 0.3 0.3</size></box></geometry><material><ambient>1 0.5 0</ambient></material></visual></link>
+    </model>
+
+    <!-- Barrière (poteau) -->
+    <model name="barrier"><static>true</static><pose>22 6 0.5 0 0 0</pose>
+      <link name="link"><visual name="visual"><geometry><box><size>0.2 0.2 1.5</size></box></geometry><material><ambient>1 0 0</ambient></material></visual></link>
+    </model>
+
+    <!-- Parking -->
+    <model name="parking"><static>true</static><pose>26 10 0.05 0 0 0</pose>
+      <link name="link"><visual name="visual"><geometry><box><size>8 5 0.1</size></box></geometry><material><ambient>0.2 0.2 0.2</ambient></material></visual></link>
+    </model>
+
+    <!-- Camion GPS -->
+    <model name="gps_truck"><static>true</static><pose>26 8 0.4 0 0 0</pose>
+      <link name="link"><visual name="visual"><geometry><box><size>0.8 0.4 0.4</size></box></geometry><material><ambient>0 0 1</ambient></material></visual></link>
+    </model>
+
+    <!-- Station météo (boîte) -->
+    <model name="weather_station"><static>true</static><pose>10 10 0.5 0 0 0</pose>
+      <link name="link"><visual name="visual"><geometry><box><size>0.3 0.3 0.3</size></box></geometry><material><ambient>1 0.8 0</ambient></material></visual></link>
+    </model>
+  </world>
+</sdf>

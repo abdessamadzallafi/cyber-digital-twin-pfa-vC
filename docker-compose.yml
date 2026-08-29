@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mosquitto
+    environment:
+      SMART_PORT_MQTT_HOST: mosquitto
+      SMART_PORT_MQTT_PORT: "1883"
+      SMART_PORT_DATABASE_URL: sqlite:////app/data/digital_twin.db
+      SMART_PORT_DATA_LAKE_PATH: /app/data/data_lake
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./reports:/app/reports
+    restart: unless-stopped
+
+  dashboard:
+    build: ./dashboard
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    environment:
+      REACT_APP_API_URL: http://localhost:8000
+      REACT_APP_WS_URL: ws://localhost:8000/ws
+    restart: unless-stopped

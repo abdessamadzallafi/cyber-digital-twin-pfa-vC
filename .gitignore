@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# Node.js
+node_modules/
+dashboard/node_modules/
+
+# Frontend build
+build/
+dashboard/build/
+dist/
+dashboard/dist/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Secrets / certificates
+*.key
+*.pem
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Generated runtime data
+data/
+data_lake/
+reports/
+
+# Local certificates / TLS artifacts
+certs/
+
+# Temporary inventory / validation files
+backend_dirs.txt
+backend_files.txt
+simulation_files.txt
+git_status.txt
+validate_vc.py.backup
+validate_vc.py.backup2
+
+# Gazebo backup files
+*.backup
+*.backup2
+
+# Gazebo backup / historical world files
+*.before_plugin_fix
