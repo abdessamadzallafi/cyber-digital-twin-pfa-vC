@@ -204,6 +204,12 @@ def start_mqtt(loop_ref: asyncio.AbstractEventLoop, queue: asyncio.Queue[dict[st
 
 
 def stop_mqtt() -> None:
-    if mqtt_client is not None:
-        mqtt_client.disconnect()
-        mqtt_client.loop_stop()
+    if mqtt_client is not None and mqtt_client._thread is not None and mqtt_client._thread.is_alive():
+        try:
+            mqtt_client.disconnect()
+        except Exception:
+            logger.debug("MQTT disconnect during shutdown raised", exc_info=True)
+        try:
+            mqtt_client.loop_stop()
+        except RuntimeError:
+            logger.debug("MQTT loop_stop skipped: thread not started")
