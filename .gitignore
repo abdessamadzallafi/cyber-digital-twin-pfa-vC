@@ -30,6 +30,7 @@ dashboard/dist/
 
 # Logs
 *.log
+logs/
 
 # IDE
 .vscode/

@@ -1,34 +1,60 @@
+# Git history — not needed inside image
 .git/
 .gitignore
+
+# Python bytecode
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+
+# Virtual environments
 venv/
 .venv/
+
+# Node.js
 dashboard/node_modules/
 node_modules/
+
+# Frontend build artifacts (rebuilt inside container)
 dashboard/build/
 dashboard/dist/
+
+# Runtime data (mounted as volumes in docker-compose)
 data/
 data_lake/
 reports/
 logs/
+
+# Secrets and certificates — NEVER in image
 .env
 certs/
 *.key
 *.pem
+
+# Database files (runtime-generated, mounted as volume)
 *.db
 *.sqlite
-*.log
+*.sqlite3
+
+# Temporary / validation files
 backend_dirs.txt
 backend_files.txt
 simulation_files.txt
 git_status.txt
 validate_vc.py.backup
 validate_vc.py.backup2
+
+# Gazebo backup files
 *.backup
 *.backup2
 *.before_plugin_fix
+
+# OS / IDE
 .DS_Store
 .vscode/
 .idea/
+
+# Docs and test files (optional — remove if you want them in image)
+docs/
+tests/
