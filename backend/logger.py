@@ -12,4 +12,4 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-logger = logging.getLogger("digital_twin")
+logger = logging.getLogger("cyberport")
