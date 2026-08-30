@@ -79,21 +79,21 @@ The **Smart Port Security Platform** is now fully configured and ready for deplo
 
 ### Option 1: Direct Python
 ```bash
-cd /home/abdo/Downloads/cyber-digital-twin
+cd "$(dirname "$0")"
 source .env
 python3 run.py
 ```
 
 ### Option 2: Uvicorn
 ```bash
-cd /home/abdo/Downloads/cyber-digital-twin
+cd "$(dirname "$0")"
 source .env
 uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
 
 ### Option 3: Docker Compose (requires docker-compose)
 ```bash
-cd /home/abdo/Downloads/cyber-digital-twin
+cd "$(dirname "$0")"
 docker compose up --build
 ```
 

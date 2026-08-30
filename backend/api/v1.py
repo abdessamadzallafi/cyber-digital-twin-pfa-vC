@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from backend.core.dependencies import CurrentUser, get_platform_service
 from backend.schemas import DeviceOut, TelemetryIn
 from backend.services import PlatformService
+from smart_port.data.data_lake import lake_summary
 from smart_port.edge.device_registry import DEVICE_REGISTRY
 
 router = APIRouter(prefix="/api/v1", tags=["Smart Port v1"])
@@ -24,3 +25,8 @@ def ingest_telemetry(payload: TelemetryIn, service: PlatformService = Depends(ge
 def telemetry_history(device_id: str, limit: int = Query(100, ge=1, le=1000),
                       service: PlatformService = Depends(get_platform_service), _: dict = CurrentUser):
     return service.device_history(device_id, limit)
+
+
+@router.get("/datalake")
+def datalake(_: dict = CurrentUser):
+    return {"format": "jsonl", "retention": "append-only", "streams": lake_summary()}

@@ -9,7 +9,7 @@ Your Smart Port Security Platform project has been fully completed and is ready 
 ## 🚀 Quick Start (30 seconds)
 
 ```bash
-cd /home/abdo/Downloads/cyber-digital-twin
+cd "$(dirname "$0")"
 source .env
 python3 run.py
 ```
@@ -78,6 +78,7 @@ python3 run.py
 
 ### B. Uvicorn Directly
 ```bash
+cd "$(dirname "$0")"
 source .env
 uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```

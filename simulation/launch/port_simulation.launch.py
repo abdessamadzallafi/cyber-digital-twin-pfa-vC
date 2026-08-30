@@ -10,7 +10,7 @@ from ament_index_python.packages import get_package_share_directory
 def generate_launch_description():
 
     project_dir = os.path.expanduser(
-        '~/Downloads/cyber-digital-twin'
+        '~/Downloads/cyber-digital-twin-pfa-vC'
     )
 
     world_file = os.path.join(

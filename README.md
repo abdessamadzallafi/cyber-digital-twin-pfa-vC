@@ -43,7 +43,7 @@ application level; the platform does not yet capture live network traffic.
 
 ```bash
 git clone <repository-url>
-cd cyber-digital-twin
+cd cyber-digital-twin-pfa-vC
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt

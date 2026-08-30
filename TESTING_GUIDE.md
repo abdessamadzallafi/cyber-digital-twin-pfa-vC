@@ -4,7 +4,7 @@
 
 ### 1. Run Automated Tests
 ```bash
-cd /home/abdo/Downloads/cyber-digital-twin
+cd "$(dirname "$0")"
 ./test_setup.sh
 ```
 

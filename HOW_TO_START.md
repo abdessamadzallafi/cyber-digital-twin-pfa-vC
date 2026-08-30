@@ -13,7 +13,7 @@ python3 run.py
 
 ## ✅ CORRECT Way #1 - Using launch.sh (RECOMMENDED)
 ```bash
-cd /home/abdo/Downloads/cyber-digital-twin
+cd "$(dirname "$0")"
 ./launch.sh start
 ```
 
@@ -34,7 +34,7 @@ cd /home/abdo/Downloads/cyber-digital-twin
 
 ## ✅ CORRECT Way #2 - Manual Command (without script)
 ```bash
-cd /home/abdo/Downloads/cyber-digital-twin
+cd "$(dirname "$0")"
 set -a; source .env; set +a
 python3 run.py
 ```
@@ -50,7 +50,7 @@ This ensures all variables are available to Python.
 
 ## ✅ CORRECT Way #3 - With Uvicorn (for development)
 ```bash
-cd /home/abdo/Downloads/cyber-digital-twin
+cd "$(dirname "$0")"
 set -a; source .env; set +a
 uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
 ```
@@ -64,7 +64,7 @@ uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
 
 ## ✅ CORRECT Way #4 - With Docker
 ```bash
-cd /home/abdo/Downloads/cyber-digital-twin
+cd "$(dirname "$0")"
 docker compose up --build
 ```
 
@@ -187,7 +187,7 @@ pip install --upgrade paho-mqtt
 
 ```bash
 # Step 1: Navigate to project
-cd /home/abdo/Downloads/cyber-digital-twin
+cd "$(dirname "$0")"
 
 # Step 2: (Optional) Activate virtual environment
 source .venv/bin/activate
