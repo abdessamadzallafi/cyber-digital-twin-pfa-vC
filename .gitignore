@@ -61,3 +61,4 @@ validate_vc.py.backup2
 
 # Gazebo backup / historical world files
 *.before_plugin_fix
+dashboard/public/port.jpeg
