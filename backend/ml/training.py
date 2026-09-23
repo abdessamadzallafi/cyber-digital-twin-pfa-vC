@@ -17,9 +17,6 @@ TRAINING_SPECS: dict[str, tuple[list[str], Callable[[np.random.Generator, int], 
     "temperature": (["celsius"], _scalar(15, 35)),
     "humidity": (["percent"], _scalar(30, 70)),
     "battery": (["percent"], _scalar(40, 100)),
-    "drone_trajectory": ("x y dx dy speed".split(), lambda rng, n: np.column_stack((
-        rng.uniform(0, 30, n), rng.uniform(0, 20, n), rng.normal(0, 0.8, n),
-        rng.normal(0, 0.8, n), rng.uniform(0, 2.5, n)))),
     "sensor_failure": (["gap_seconds", "has_measurement"], lambda rng, n: np.column_stack((
         rng.uniform(0, 30, n), rng.normal(1.0, 0.005, n)))),
     "flood_attack": (["packet_count", "packet_size"], lambda rng, n: np.column_stack((
