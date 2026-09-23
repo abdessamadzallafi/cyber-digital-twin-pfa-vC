@@ -1,0 +1,259 @@
+{
+  "audit": {
+    "name": "SecurIoT-Port Functional Audit V1",
+    "scope": "/home/abdo/Downloads/CyberPort",
+    "mode": "strict_read_only",
+    "date_observed": "2026-09-19",
+    "code_modifications": 0,
+    "database_modifications": 0,
+    "tests_executed": false,
+    "tests_collected": 273,
+    "secrets_read": false,
+    "services_started": false,
+    "containers_restarted": false
+  },
+  "architecture": {
+    "target": "MQTT/Mosquitto -> FastAPI -> normalization -> ML -> SIEM -> alerts/incidents -> dashboard React",
+    "actual_pipeline": [
+      "Mosquitto subscribes port/# and drone/#",
+      "backend.mqtt_listener decodes JSON and enqueues into bounded asyncio queue",
+      "mqtt_worker normalizes, writes Data Lake, persists telemetry, evaluates rules and ML",
+      "alerts and SIEM events are persisted; ActionDispatcher may create incident and mission",
+      "mission is published to drone/mission; simulator returns drone telemetry/events",
+      "backend broadcasts selected updates over /ws",
+      "dashboard combines WebSocket events with 5-second REST polling"
+    ],
+    "drone_boundary": "External deterministic MQTT simulator, not a real IoT asset",
+    "active_components": [
+      {"path":"backend/main.py","role":"FastAPI root API, lifespan, MQTT/UDP startup, WS broadcast","importance":"P0","status":"active"},
+      {"path":"backend/mqtt_listener.py","role":"MQTT ingress, bounded queues, persistence, detection dispatch","importance":"P0","status":"active"},
+      {"path":"backend/database/","role":"Canonical SQLAlchemy models/session","importance":"P0","status":"active"},
+      {"path":"backend/siem/","role":"SIEM collection, correlation, alert/incident/risk","importance":"P0","status":"active"},
+      {"path":"backend/ml/","role":"Legacy and advanced anomaly detection","importance":"P0","status":"active_with_legacy_overlap"},
+      {"path":"backend/services/action_dispatcher.py","role":"Incident dedup, cooldown and mission dispatch","importance":"P0","status":"active"},
+      {"path":"backend/ros/","role":"Drone manager, deterministic navigation, optional ROS façade","importance":"P1","status":"partially_active"},
+      {"path":"simulation/drone_sim.py","role":"Deterministic external drone simulator over MQTT","importance":"P1","status":"active_if_launched"},
+      {"path":"dashboard/src/App.jsx","role":"React dashboard, polling, WS consumer, user actions","importance":"P0","status":"active"},
+      {"path":"smart_port/data/data_lake.py","role":"Append-only JSONL sink and catalogue","importance":"P0","status":"active"}
+    ],
+    "legacy_or_conflicting": [
+      {"path":"backend/database.py","reason":"duplicate ORM model architecture beside backend/database/","status":"legacy_risk"},
+      {"path":"backend/ml/anomaly_detector.py","reason":"scalar legacy ML path still called by decision_engine","status":"legacy_compatibility"},
+      {"path":"backend/ml/network_anomaly.py","reason":"additional legacy network ML signal","status":"legacy_compatibility"},
+      {"path":"data_lake/","reason":"local default root differs from Docker-mounted data/data_lake/","status":"split_storage_risk"},
+      {"path":"simulation/robot_sim.py","reason":"older robot/ROS simulation outside dashboard mission path","status":"legacy_or_experimental"}
+    ]
+  },
+  "dashboard": {
+    "file": "dashboard/src/App.jsx",
+    "pages": ["overview","devices","security","missions","incidents","timeline","datalake","reports"],
+    "api_calls": [
+      {"call":"POST /token","line":114,"backend":true,"data":"real","realtime":false,"problem":"demo fallback credentials; JWT in localStorage"},
+      {"call":"GET /statistics","line":75,"backend":true,"data":"real","realtime":false,"problem":"5-second polling"},
+      {"call":"GET /risk","line":75,"backend":true,"data":"real","realtime":false,"problem":"risk window differs from other counters"},
+      {"call":"GET /devices","line":75,"backend":true,"data":"derived_from_sensor_readings","realtime":false,"problem":"fallback static inventory when empty"},
+      {"call":"GET /incidents","line":75,"backend":true,"data":"real","realtime":false,"problem":"no resolve action in UI"},
+      {"call":"GET /missions","line":75,"backend":true,"data":"real","realtime":false,"problem":"lifecycle may be memory/DB split"},
+      {"call":"GET /timeline","line":75,"backend":true,"data":"real_aggregate","realtime":false,"problem":"not live without refresh"},
+      {"call":"GET /drone/status","line":75,"backend":true,"data":"memory_state","realtime":false,"problem":"not canonical persisted state"},
+      {"call":"GET /api/v1/datalake","line":75,"backend":true,"data":"real_catalogue","realtime":false,"problem":"root depends on runtime configuration"},
+      {"call":"GET /health/{device_id}","line":85,"backend":true,"data":"derived","realtime":false,"problem":"one request per hardcoded device"},
+      {"call":"GET /measures/{device_id}","line":124,"backend":true,"data":"real_db","realtime":false,"problem":"generic value fallback for heterogeneous sensors"},
+      {"call":"POST /report/{device_id}","line":128,"backend":true,"data":"real_pdf","realtime":false,"problem":"errors not surfaced"}
+    ],
+    "buttons": [
+      {"label":"Déconnexion","action":"clear local token","backend":false,"status":"functional_local"},
+      {"label":"Flood MQTT","action":"POST /simulate/flood","backend":true,"status":"functional"},
+      {"label":"Spoofing","action":"POST /simulate/spoof","backend":true,"status":"functional"},
+      {"label":"Valeur impossible","action":"POST /simulate/impossible","backend":true,"status":"functional"},
+      {"label":"Déployer","action":"POST /force_mission/entrepot_E01","backend":true,"status":"partial_lifecycle"},
+      {"label":"Créer une mission d’inspection","action":"POST /force_mission/entrepot_E01","backend":true,"status":"partial_lifecycle"},
+      {"label":"Préparer un rapport","action":"GET measures then POST report","backend":true,"status":"functional"},
+      {"label":"Vue satellite","action":"none","backend":false,"status":"decorative"},
+      {"label":"Voir tout le journal","action":"none","backend":false,"status":"decorative"},
+      {"label":"Notifications","action":"none","backend":false,"status":"decorative"}
+    ],
+    "static_or_hardcoded": ["DEVICE_LABELS","DEVICE_TYPES","MAP_POSITIONS","8 login stats cards","port.jpeg map background","8-device fallback","100 percent health fallback"],
+    "random_in_dashboard": false,
+    "websocket_contract_bug": "backend sends event=drone_telemetry; frontend checks update.type=drone, so direct drone state update branch does not match"
+  },
+  "api": {
+    "route_count_extracted": 59,
+    "websocket": [{"method":"WS","route":"/ws","file":"backend/main.py:167","auth":"not_checked"}],
+    "root_route_groups": ["/token","/statistics","/dashboard","/health","/risk","/simulate/*","/force_mission/*","/network/*","/drone/*","/missions","/report/*","/equipments","/datalake","/reports","/measures/*","/alerts","/ml/anomalies","/security/events","/incidents","/timeline","/devices"],
+    "versioned_route_groups": ["/api/v1/platform/*","/api/v1/edge/*","/api/v1/devices*","/api/v1/telemetry","/api/v1/datalake","/api/v1/siem/*","/api/v1/ai/predict","/api/v1/drone/*","/api/v1/ops/*"],
+    "dashboard_consumes_versioned": ["/api/v1/datalake"],
+    "dashboard_does_not_consume": ["/api/v1/siem/*","/api/v1/ai/predict","/api/v1/drone/*","/api/v1/ops/*","/api/v1/telemetry","/alerts","/security/events","/ml/anomalies"]
+  },
+  "authentication": {
+    "algorithm":"HS256",
+    "expiration_minutes":60,
+    "token_flow":"OAuth2PasswordRequestForm -> bcrypt fake_users_db -> JWT sub/exp -> Bearer middleware/dependencies",
+    "users":["admin","operateur"],
+    "default_demo_password_fallbacks":true,
+    "public_endpoints":["/health","/token","/api/v1/platform/health","/api/v1/edge/devices","/api/v1/devices","/api/v1/telemetry","/ws","/docs","/openapi.json"],
+    "cors":"allow_credentials true; wildcard replaced with localhost origins",
+    "websocket_auth":"missing"
+  },
+  "mqtt": {
+    "subscriptions":["port/#","drone/#"],
+    "queues":["bounded ingress_queue","bounded update_queue"],
+    "invalid_payload":"rejected and counted",
+    "queue_overflow":"message dropped and counted",
+    "reconnect":"Paho automatic reconnect delay 1-30 seconds",
+    "persisted_non_drone":["data_lake telemetry","sensor_readings","alerts when decision detects"],
+    "persisted_drone":["data_lake telemetry","sensor_readings","mission status updates from telemetry"],
+    "drone_excluded_from_decision_engine":true,
+    "diagram":"MQTT -> decode/enqueue -> normalize -> lake/DB -> security/network/legacy+advanced ML -> alerts/SIEM -> ActionDispatcher -> mission MQTT -> drone simulator -> telemetry/event -> DB/WS"
+  },
+  "ml": {
+    "legacy_models":["temperature","humidity","vibration","smoke","camera"],
+    "advanced_domains":["temperature","humidity","battery","drone_trajectory","sensor_failure","flood_attack","network_traffic","spoofing","unknown_device"],
+    "algorithm":"Isolation Forest bundles expected; joblib loading independent per domain",
+    "score":"clamp(0.5 - decision_function*3, 0, 1)",
+    "anomaly_alert_type":"ml_anomaly",
+    "anomaly_becomes_red":true,
+    "attack_separation":"names are separate but operational severity often merges anomaly and attack",
+    "mission_domains":["temperature","battery","drone_trajectory","sensor_failure","flood_attack","network_traffic"]
+  },
+  "siem_and_alerts": {
+    "correlation_window_minutes":5,
+    "correlation_rules":["3 auth failures -> high","network+sensor events -> high","5 related events -> medium","critical source remains critical"],
+    "alert_sources":[
+      "security.engine: unknown_device,bad_token,wrong_topic,flood",
+      "network_monitor: network_flood,unknown_ip",
+      "legacy and advanced ML: ml_anomaly",
+      "mqtt_listener drone events: drone_*",
+      "SmartPortSiem AlertManager",
+      "HTTP audit and auth SIEM events"
+    ],
+    "duplication_risk":"high",
+    "incident_producers":["IncidentManager through SmartPortSiem","ActionDispatcher.create_or_update_incident","POST /incidents without dedup"]
+  },
+  "missions": {
+    "states_defined":["created","active","inspecting","returning_home","completed","aborted"],
+    "compatibility_states":["sent","in_progress"],
+    "transitions":[
+      {"from":"none","to":"created","actor":"DroneManager.create_inspection / force_mission / api drone missions"},
+      {"from":"created","to":"active","actor":"POST /api/v1/drone/missions/start"},
+      {"from":"active","to":"inspecting","actor":"WaypointNavigator after last waypoint"},
+      {"from":"active_or_inspecting","to":"returning_home","actor":"return_home or battery policy"},
+      {"from":"returning_home","to":"completed","actor":"navigation reaches home"},
+      {"from":"any_worker_state","to":"aborted","actor":"publish failure, simulator abort, worker error"}
+    ],
+    "cooldown_seconds_default":60,
+    "incident_dedup_window_seconds_default":300,
+    "persistence_warning":"creation persisted; start/tick mainly mutate memory and MQTT; DB synchronization depends on returned simulator telemetry"
+  },
+  "drone_simulator": {
+    "files":["simulation/drone_sim.py","backend/ros/drone_manager.py","backend/api/drone.py"],
+    "html_js_css_found":false,
+    "transport":"MQTT only for simulator",
+    "topics":["drone/mission","drone/telemetry","drone/gps","drone/camera","drone/event"],
+    "random_in_drone_simulator":false,
+    "movement":"deterministic bounded one-unit steps with configurable interval",
+    "battery":"deterministic decrement 0.1 per movement step",
+    "classification":{"mission_command":"REAL_BACKEND","state":"SIMULATED_DETERMINISTIC","coordinates":"SIMULATED_DETERMINISTIC","token":"CONFIGURED","ui_map":"HARDCODED","direct_rest_ws":"UNUSED"},
+    "minimal_connection_architecture":"backend creates and persists mission -> MQTT command -> deterministic simulator validates and executes -> simulator publishes telemetry/events -> backend persists transitions and broadcasts one WS contract"
+  },
+  "realtime": {
+    "endpoint":"/ws",
+    "server":"backend/main.py broadcast task",
+    "client":"dashboard/src/App.jsx",
+    "message_shapes":["event=telemetry","event=drone_telemetry","event=drone_event"],
+    "client_reconnect":false,
+    "heartbeat":false,
+    "queue_drop_possible":true,
+    "main_dashboard_numbers":"mostly REST DB-derived polling every 5 seconds"
+  },
+  "data_lake": {
+    "format":"JSONL append-only",
+    "streams":["telemetry","security","missions","network","logs"],
+    "aliases":{"siem":"security","audit":"logs","mission":"missions"},
+    "rotation":"daily UTC filename; no retention/compaction",
+    "runtime_roots":{"docker":"data/data_lake","local_default":"data_lake"},
+    "dashboard_reads":"catalogue counts only"
+  },
+  "database": {
+    "canonical_tables":["sensor_readings","alerts","network_flows","missions","incidents","siem_events","devices","drones","reports","logs"],
+    "runtime_db_observations":[
+      {"path":"data/digital_twin.db","integrity":"ok","counts":{"sensor_readings":29069,"alerts":47675,"incidents":74,"missions":35,"siem_events":111545,"devices":0,"drones":0,"network_flows":0,"reports":0,"logs":0}},
+      {"path":"digital_twin.db","integrity":"ok","counts":{"sensor_readings":11180,"alerts":8077,"incidents":50,"missions":157,"siem_events":43639,"devices":0,"drones":0,"network_flows":0,"reports":0,"logs":0}}
+    ],
+    "read_only_method":"sqlite3 URI mode=ro + pragma integrity_check",
+    "empty_or_legacy_tables":["devices","drones","network_flows","reports","logs"],
+    "schema_overlap":"backend/database.py duplicates backend/database/ package"
+  },
+  "docker": {
+    "services":["mosquitto","backend","dashboard"],
+    "ports":{"mosquitto":"1883:1883","backend":"8000:8000","dashboard":"3000:3000"},
+    "volumes":{"backend_db":"./data:/app/data","reports":"./reports:/app/reports"},
+    "backend_env":{"SMART_PORT_MQTT_HOST":"mosquitto","SMART_PORT_MQTT_PORT":"1883","SMART_PORT_DATABASE_URL":"sqlite:////app/data/digital_twin.db","SMART_PORT_DATA_LAKE_PATH":"/app/data/data_lake"},
+    "env_file":".env",
+    "compose_config":"passed with obsolete version warning",
+    "observed_stack":"three containers already up; no start/restart performed"
+  },
+  "tests": {
+    "collection_command":"pytest --collect-only -q -p no:cacheprovider",
+    "collected":273,
+    "executed":false,
+    "groups":["normalizer HTTP/UDP/MQTT","MQTT listener/safety","ActionDispatcher","drone simulator","SIEM reports","stabilisation regressions"],
+    "not_tested":"real broker integration, complete dashboard E2E, lifecycle after backend restart, split Data Lake provenance, long-running queue loss"
+  },
+  "functional_matrix": [
+    {"feature":"Login JWT REST","classification":"REAL","priority":"P0"},
+    {"feature":"WebSocket authentication","classification":"PARTIAL","priority":"P0"},
+    {"feature":"MQTT IoT ingestion","classification":"REAL","priority":"P0"},
+    {"feature":"HTTP/UDP ingestion","classification":"REAL","priority":"P1"},
+    {"feature":"ML detection","classification":"PARTIAL","priority":"P1"},
+    {"feature":"ML vs cyber separation","classification":"PARTIAL","priority":"P0"},
+    {"feature":"SIEM correlation","classification":"PARTIAL","priority":"P0"},
+    {"feature":"Alert deduplication","classification":"PARTIAL","priority":"P0"},
+    {"feature":"Mission persistence/lifecycle","classification":"PARTIAL","priority":"P0"},
+    {"feature":"Deterministic drone simulator","classification":"REAL","priority":"P1"},
+    {"feature":"Drone dashboard realtime","classification":"DISCONNECTED","priority":"P1"},
+    {"feature":"Data Lake catalogue","classification":"REAL","priority":"P1"},
+    {"feature":"Single Data Lake root","classification":"DISCONNECTED","priority":"P0"},
+    {"feature":"PDF reports","classification":"REAL","priority":"P1"},
+    {"feature":"Satellite/journal/notifications buttons","classification":"FAKE/STATIC","priority":"P2"},
+    {"feature":"Sensor simulators","classification":"RANDOM","priority":"P1"},
+    {"feature":"ROS2/Gazebo","classification":"LEGACY","priority":"P2"}
+  ],
+  "top_problems":[
+    "WebSocket accepts clients without JWT",
+    "Drone WS message contract mismatch",
+    "Two Data Lake roots",
+    "Duplicate ORM architecture",
+    "Multiple ML alert producers",
+    "ML anomaly escalated to red like cyber attack",
+    "Multiple alert/incident creation paths",
+    "Mission memory/DB lifecycle split",
+    "Static dashboard fallbacks can masquerade as live data",
+    "Visible buttons without backend actions"
+  ],
+  "top_operational_features":[
+    "JWT REST login",
+    "MQTT JSON ingestion with bounded queue",
+    "SQLite telemetry and alert persistence",
+    "Payload normalization/conservation",
+    "Identity and network detection",
+    "Legacy and advanced ML loading with fallback",
+    "SIEM correlation and risk",
+    "Incident dedup and mission cooldown",
+    "Deterministic MQTT drone mission simulator",
+    "JSONL Data Lake and PDF reports"
+  ],
+  "recommended_order":[
+    "Freeze one canonical API/WS/Data Lake contract",
+    "Fix WS contract/auth/reconnect and keep polling fallback",
+    "Connect mission UI to full lifecycle and surface errors",
+    "Remove misleading UI fallbacks and decorative claims",
+    "Choose one alert producer and common dedup key",
+    "Separate ML signal, cyber threat and incident semantics",
+    "Persist and synchronize every mission transition",
+    "Unify Data Lake path local/Docker",
+    "Retire legacy façades only after consumer measurement",
+    "Run isolated integration tests with temporary DB/Data Lake"
+  ],
+  "markers":["FUNCTIONAL_AUDIT_COMPLETE","MODIFICATIONS_CODE = 0","MODIFICATIONS_DATABASE = 0"]
+}

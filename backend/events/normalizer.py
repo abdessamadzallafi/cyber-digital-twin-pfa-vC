@@ -72,21 +72,8 @@ from backend.events.contracts import (
 # Internal constants — mirror of mqtt_listener classification rules
 # ---------------------------------------------------------------------------
 
-# type values that identify drone telemetry frames
-_DRONE_TELEMETRY_TYPES: frozenset[str] = frozenset({"drone", "drone_gps", "camera_stream"})
-
-# MQTT topics that identify drone telemetry frames
-_DRONE_TELEMETRY_TOPICS: frozenset[str] = frozenset({
-    "drone/telemetry",
-    "drone/gps",
-    "drone/camera",
-})
-
-# type value that identifies a drone operational event
-_DRONE_EVENT_TYPE: str = "drone_event"
-
-# MQTT topic that identifies a drone operational event
-_DRONE_EVENT_TOPIC: str = "drone/event"
+# Drone-specific event types/topics are intentionally not recognized.
+# SecurIoT-Port accepts platform IoT telemetry through the generic path.
 
 # Fields consumed from the raw payload into structured sub-contracts.
 # Everything else ends up in metadata.
@@ -145,10 +132,6 @@ def _classify(dev_type: str, topic: str) -> EventKind:
                             OR topic == drone/event
         IOT_TELEMETRY    ← everything else  (default)
     """
-    if dev_type in _DRONE_TELEMETRY_TYPES or topic in _DRONE_TELEMETRY_TOPICS:
-        return EventKind.DRONE_TELEMETRY
-    if dev_type == _DRONE_EVENT_TYPE or topic == _DRONE_EVENT_TOPIC:
-        return EventKind.DRONE_EVENT
     return EventKind.IOT_TELEMETRY
 
 

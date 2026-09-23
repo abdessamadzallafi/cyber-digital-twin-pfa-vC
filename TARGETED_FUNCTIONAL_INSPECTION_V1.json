@@ -1,0 +1,207 @@
+{
+  "inspection": {
+    "name": "Targeted Functional Inspection V1",
+    "project": "/home/abdo/Downloads/CyberPort",
+    "mode": "read_only",
+    "source_reports": ["FUNCTIONAL_AUDIT_V1.md", "FUNCTIONAL_AUDIT_V1.json"],
+    "code_modifications": 0,
+    "database_modifications": 0,
+    "services_restarted": false,
+    "tests_executed": false
+  },
+  "websocket": {
+    "backend": {
+      "file": "backend/main.py",
+      "endpoint": "/ws",
+      "function": "websocket_endpoint",
+      "lines": "167-175",
+      "authentication": "none; websocket is accepted directly and /ws is public in backend/auth.py",
+      "receive_behavior": "receive_text only; client message is not interpreted",
+      "broadcast": "broadcast() consumes update_queue and send_json() to every connected websocket",
+      "queue_drop": "mqtt_listener._publish_dashboard drops updates when bounded update_queue is full"
+    },
+    "dashboard": {
+      "file": "dashboard/src/App.jsx",
+      "connection_lines": "96-108",
+      "url": "REACT_APP_WS_URL or API.replace(/^http/, 'ws') + '/ws'",
+      "token_sent": false,
+      "parser": "JSON.parse(data)",
+      "handlers": [
+        "if (update.type === 'drone') setDrone(...)",
+        "if (update.device_id) update devices and prepend events"
+      ],
+      "reconnect": false,
+      "heartbeat": false
+    },
+    "events": [
+      {
+        "source": "MQTT port/# -> backend/mqtt_listener.py:173-176",
+        "event": "telemetry",
+        "payload_keys": ["event","device_id","type","status","last_value","alerts","anomaly_score","network","action","timestamp"],
+        "destination": "update_queue -> /ws -> App.jsx devices/events"
+      },
+      {
+        "source": "MQTT drone/telemetry|drone/gps|drone/camera -> backend/mqtt_listener.py:127-131",
+        "event": "drone_telemetry",
+        "payload_keys": ["event","device_id","type","status","x","y","altitude","battery","mission_id","mission_status","telemetry","drone","timestamp"],
+        "destination": "update_queue -> /ws -> App.jsx; direct drone handler does not match event name"
+      },
+      {
+        "source": "MQTT drone/event -> backend/mqtt_listener.py:144-149",
+        "event": "drone_event",
+        "payload_keys": ["event","device_id","payload"],
+        "nested_payload_keys": ["event_type","mission_id","message","timestamp"],
+        "destination": "update_queue -> /ws -> generic dashboard devices/events; no mission transition handler"
+      },
+      {
+        "source": "REST GET /drone/status",
+        "event": "polling response",
+        "payload": "DroneManager.status()",
+        "destination": "App.jsx refresh every 5 seconds -> setDrone"
+      }
+    ],
+    "incompatibilities": [
+      "backend drone event uses event=drone_telemetry while dashboard tests update.type=drone",
+      "drone_event carries event_type nested under payload and is not interpreted as lifecycle",
+      "WebSocket has no token despite REST Bearer authentication",
+      "no client reconnect/backoff/heartbeat/replay"
+    ]
+  },
+  "missions_drone": {
+    "files": [
+      "backend/services/action_dispatcher.py",
+      "backend/ros/drone_manager.py",
+      "backend/ros/drone_models.py",
+      "backend/ros/mission_planner.py",
+      "backend/ros/waypoint_navigation.py",
+      "backend/ros/inspection_mission.py",
+      "backend/api/drone.py",
+      "backend/main.py",
+      "backend/mqtt_listener.py",
+      "backend/database/models.py",
+      "simulation/drone_sim.py"
+    ],
+    "defined_statuses": ["created","active","inspecting","returning_home","completed","aborted"],
+    "compatibility_statuses": ["sent","in_progress"],
+    "transitions": [
+      {"from":"none","to":"created","responsible":"DroneManager.create_inspection / POST /api/v1/drone/missions / POST /force_mission/{device_id}","db":"yes","websocket":"no direct event","simulator":"MQTT drone/mission"},
+      {"from":"created","to":"aborted","responsible":"DroneManager.create_inspection when publish_mission fails","db":"yes","websocket":"no direct event","simulator":"no command received"},
+      {"from":"created","to":"active","responsible":"DroneManager.start -> InspectionMission.begin","db":"no direct update","websocket":"no direct event","simulator":"no; manager control path"},
+      {"from":"active","to":"flying","responsible":"DroneManager.start state or WaypointNavigator.update","db":"not direct","websocket":"only through telemetry publish","simulator":"yes if simulator worker active"},
+      {"from":"flying","to":"inspecting","responsible":"WaypointNavigator.update or simulator _fly after waypoint","db":"only when simulator telemetry is ingested","websocket":"drone_telemetry","simulator":"yes"},
+      {"from":"active|inspecting","to":"returning_home","responsible":"return_home, battery policy, simulator _fly","db":"only through simulator telemetry","websocket":"drone_telemetry","simulator":"yes"},
+      {"from":"returning_home","to":"completed","responsible":"WaypointNavigator or simulator _fly at home","db":"only via telemetry idle/completed path","websocket":"drone_event plus telemetry","simulator":"yes"},
+      {"from":"worker_state","to":"aborted","responsible":"simulator stop/error","db":"not directly updated by drone_event branch","websocket":"drone_event","simulator":"yes"}
+    ],
+    "db_model": {
+      "file": "backend/database/models.py",
+      "table": "missions",
+      "columns": ["mission_id","device_id","robot_id physical / drone_id Python","target_x","target_y","status","created_at"],
+      "creation_persisted": true,
+      "start_tick_direct_db_sync": false
+    },
+    "divergences": [
+      "manager mission/state is process memory and disappears on restart",
+      "missions row is inserted at creation but start/tick mostly mutate memory and MQTT",
+      "drone_event creates an info Alert but does not directly update missions.status",
+      "dashboard creates through root force_mission and polls root status; it does not call versioned start/return-home/tick",
+      "drones table is not the runtime source; DroneManager singleton is"
+    ]
+  },
+  "dashboard_fallbacks": [
+    {"file":"dashboard/src/App.jsx","line":38,"variable":"number","behavior":"Number(value || 0)","source":"frontend","problem":"missing value displayed as zero","safe_replacement":"render em dash/loading for absent value"},
+    {"file":"dashboard/src/App.jsx","line":49,"variable":"stats","behavior":"all counters initialize to 0","source":"frontend","problem":"zero shown before backend confirms","safe_replacement":"loading/unknown state"},
+    {"file":"dashboard/src/App.jsx","line":51,"variable":"risk","behavior":"risk_score 0 / Low","source":"frontend","problem":"false low risk before API","safe_replacement":"unknown until response"},
+    {"file":"dashboard/src/App.jsx","line":57,"variable":"drone","behavior":"x=10,y=10,battery=100,status=idle","source":"frontend","problem":"artificial initial drone state","safe_replacement":"unknown until status API"},
+    {"file":"dashboard/src/App.jsx","line":125,"variable":"history value","behavior":"value ?? people_count ?? 0","source":"DB then frontend","problem":"missing metric becomes real-looking zero","safe_replacement":"preserve null"},
+    {"file":"dashboard/src/App.jsx","line":"153-166","variable":"login cards","behavior":"8, 24/7, AI, DRONE hardcoded","source":"JSX","problem":"not API-backed","safe_replacement":"remove or backend capabilities endpoint"},
+    {"file":"dashboard/src/App.jsx","line":174,"variable":"activeEvents","behavior":"timeline fallback when WS empty","source":"REST timeline","problem":"history can appear live","safe_replacement":"label historical vs live"},
+    {"file":"dashboard/src/App.jsx","line":251,"variable":"devices[id]","behavior":"empty object for hardcoded map IDs","source":"DEVICE_LABELS","problem":"unobserved devices shown on map","safe_replacement":"registry + unknown status"},
+    {"file":"dashboard/src/App.jsx","line":260,"variable":"robot position","behavior":"robot.x || 10 / robot.y || 10","source":"API/WS then frontend","problem":"zero position replaced by 10","safe_replacement":"nullish check preserving 0"},
+    {"file":"dashboard/src/App.jsx","line":316,"variable":"list","behavior":"8 hardcoded labels if API list empty","source":"DEVICE_LABELS","problem":"fake inventory","safe_replacement":"empty/unknown inventory state"},
+    {"file":"dashboard/src/App.jsx","line":327,"variable":"condition","behavior":"missing online treated green","source":"API then frontend","problem":"absence presented operational","safe_replacement":"unknown"},
+    {"file":"dashboard/src/App.jsx","line":333,"variable":"health","behavior":"missing health_score treated 100","source":"API then frontend","problem":"false perfect health","safe_replacement":"unknown/—"},
+    {"file":"dashboard/src/App.jsx","line":403,"variable":"mission.status","behavior":"missing status becomes pending","source":"missions API","problem":"non-contract status","safe_replacement":"unknown"},
+    {"file":"dashboard/src/App.jsx","line":"424-425","variable":"incident severity/status","behavior":"medium/open defaults","source":"incidents API","problem":"real state can be overwritten visually","safe_replacement":"unknown"}
+  ],
+  "alert_creation": {
+    "producers": [
+      {"file":"backend/mqtt_listener.py","function":"process_message","line":"145-147","trigger":"MQTT drone_event","alert_types":"drone_<event_type>","table":"alerts","siem":false,"incident":false,"duplication":"possible with mission/SIEM paths"},
+      {"file":"backend/mqtt_listener.py","function":"process_message","line":"159-164","trigger":"decision alerts for MQTT IoT","alert_types":"security/network/ml types","table":"alerts","siem":true,"incident":"ActionDispatcher after decision","duplication":"direct Alert + SIEM event + ActionDispatcher"},
+      {"file":"backend/services/platform_service.py","function":"ingest_telemetry","line":"49-57","trigger":"HTTP/UDP telemetry","alert_types":"SiemService identity alerts","table":"alerts","siem":true,"incident":"possible through SmartPortSiem telemetry_ingested","duplication":"direct Alert + SIEM audit"},
+      {"file":"backend/siem/managers.py","function":"AlertManager.create","line":"10-17","trigger":"SmartPortSiem high/critical event","alert_types":"event.event_type","table":"alerts","siem":true,"incident":"IncidentManager afterwards","duplication":"can duplicate direct alert"},
+      {"file":"backend/main.py","function":"audit_http_requests","line":"67-73","trigger":"every HTTP request","alert_types":"http_request only after escalation","table":"siem_events then possible alerts","siem":true,"incident":"possible after correlation","duplication":"auth/application HTTP noise"},
+      {"file":"backend/auth.py","function":"_audit_authentication","line":"68-72","trigger":"login success/failure","alert_types":"login_success/login_failed after escalation","table":"siem_events then possible alerts","siem":true,"incident":"possible after correlation","duplication":"with HTTP audit"},
+      {"file":"backend/main.py","function":"create_incident","line":"496-510","trigger":"manual POST /incidents","alert_types":"none","table":"incidents","siem":false,"incident":"direct","duplication":"no dedup"}
+    ],
+    "graph":"telemetry -> security/network/ML -> direct alerts -> SIEM events -> optional AlertManager -> optional IncidentManager; MQTT detections also -> ActionDispatcher -> Incident -> mission",
+    "plausible_duplications":[
+      "direct Alert plus AlertManager Alert after SIEM escalation",
+      "ActionDispatcher Incident plus IncidentManager Incident for same device/type",
+      "flood and network_flood for one burst",
+      "multiple advanced ml_anomaly rows for one telemetry",
+      "auth SIEM events correlated with HTTP audit events"
+    ]
+  },
+  "ml": {
+    "chain":"telemetry -> DeviceGateway/process_network_data -> decision_engine -> legacy scalar + advanced PredictionService + legacy network -> anomaly score/alerts -> SIEM -> ActionDispatcher incident/mission -> WS/dashboard",
+    "legacy": {
+      "file":"backend/ml/anomaly_detector.py",
+      "models":["temperature_model.pkl","humidity_model.pkl","vibration_model.pkl","smoke_model.pkl","camera_model.pkl"],
+      "features":"scalar sensor value or camera people_count",
+      "anomaly_rule":"model.predict == -1",
+      "score":"clamp(0.5 - decision_function*3, 0, 1)",
+      "alert_wording":"Anomalie IA sur <type> (score=<score>)"
+    },
+    "advanced": {
+      "file":"backend/ml/prediction_service.py",
+      "algorithm":"IsolationForest bundles advanced_*.pkl",
+      "domains":["temperature","humidity","battery","drone_trajectory","sensor_failure","flood_attack","network_traffic","spoofing","unknown_device"],
+      "features":{"temperature":["value"],"humidity":["value"],"battery":["battery"],"drone_trajectory":["x","y","dx","dy","speed"],"sensor_failure":["gap_seconds","has_measurement"],"flood_attack":["packet_count","packet_size"],"network_traffic":["packet_count","bytes_total","avg_interval","throughput"],"spoofing":["valid_token","valid_topic"],"unknown_device":["registered_device"]},
+      "anomaly_rule":"model.predict == -1",
+      "score":"clamp(0.5 - decision_function*3, 0, 1)",
+      "alert_wording":"AI anomaly: <domain> (score=<score>)"
+    },
+    "network_legacy": {"file":"backend/ml/network_anomaly.py","features":["packet_count","bytes_total","avg_interval","throughput"],"anomaly_rule":"model.predict == -1","score_behavior":"decision_engine forces raw_score >= 0.8"},
+    "severity": {
+      "legacy_or_advanced_ml":"decision_engine sets threat_level=red",
+      "correlation":"ai_incident true for ml_anomaly or score>=0.8; severity high, or critical with security alert",
+      "incident":"ActionDispatcher trigger ml_anomaly can create incident and dispatch mission",
+      "dashboard_wording":"Menaces détectées uses stats.attacks, which counts security alert types and excludes ml_anomaly; ML events appear generically in Journal de sécurité"
+    },
+    "security_conflation": true,
+    "exact_conflation_points":["backend/decision_engine.py:50-64","backend/decision_engine.py:72-75","smart_port/analytics/correlation_engine.py:12-18","backend/mqtt_listener.py:167-172"]
+  },
+  "priorities": {
+    "P0":[
+      "Fix drone WebSocket event contract",
+      "Authenticate WebSocket",
+      "remove misleading dashboard healthy/100%/active fallbacks",
+      "separate ML anomaly semantics from cyber attack semantics",
+      "prevent duplicate alert/SIEM/incident paths",
+      "synchronize mission DB with memory/MQTT transitions"
+    ],
+    "P1":[
+      "Add WebSocket reconnect/backoff and resynchronization",
+      "use one canonical mission API in dashboard",
+      "add common alert dedup identity",
+      "separate ML/cyber/incident counters",
+      "process drone completed/aborted events as mission transitions"
+    ],
+    "P2":[
+      "remove decorative buttons",
+      "replace hardcoded device labels/positions with registry data",
+      "document compatibility statuses",
+      "show data provenance in UI",
+      "gradually reduce root/versioned facade duplication"
+    ]
+  },
+  "proposed_minimal_fix_order":[
+    "Unify WebSocket event/payload contract and dashboard handler",
+    "Add WebSocket authentication plus minimal reconnect/backoff",
+    "Replace misleading UI fallbacks with unknown/loading states",
+    "Separate ML/cyber categories in decision, counters and wording",
+    "Deduplicate alert/SIEM/incident paths and synchronize mission transitions"
+  ],
+  "markers":["MODIFICATIONS_CODE = 0","MODIFICATIONS_DATABASE = 0"]
+}

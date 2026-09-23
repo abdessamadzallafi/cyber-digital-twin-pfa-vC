@@ -14,6 +14,5 @@ def correlate(alerts: Iterable[tuple[str, str]], anomaly_score: float = 0.0) -> 
     return {
         "severity": severity,
         "open_incident": security_incident or ai_incident,
-        "dispatch_drone": ai_incident or "smoke" in kinds,
         "categories": sorted(kinds),
     }

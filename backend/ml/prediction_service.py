@@ -23,7 +23,6 @@ class PredictionService:
     def __init__(self):
         self.models: dict[str, dict] = {}
         self.last_seen: dict[str, float] = {}
-        self.last_position: dict[str, tuple[float, float, float]] = {}
         self.lock = Lock()
 
     def load_models(self) -> None:
@@ -73,16 +72,6 @@ class PredictionService:
             if data.get("battery") is not None:
                 result = self._predict("battery", [float(data["battery"])])
                 if result: results.append(result)
-
-            if device_type == "drone" and data.get("x") is not None and data.get("y") is not None:
-                x, y = float(data["x"]), float(data["y"])
-                previous = self.last_position.get(device_id, (x, y, timestamp))
-                elapsed = max(timestamp - previous[2], 0.001)
-                dx, dy = x - previous[0], y - previous[1]
-                speed = (dx ** 2 + dy ** 2) ** 0.5 / elapsed
-                result = self._predict("drone_trajectory", [x, y, dx, dy, speed])
-                if result: results.append(result)
-                self.last_position[device_id] = (x, y, timestamp)
 
             previous_seen = self.last_seen.get(device_id, timestamp)
             has_measurement = float(any(data.get(field) is not None for field in ("value", "status", "people_count", "latitude", "battery")))

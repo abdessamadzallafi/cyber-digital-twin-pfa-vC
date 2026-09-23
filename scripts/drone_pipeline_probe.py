@@ -30,7 +30,16 @@ class Probe:
         self.lock = threading.Lock()
         self.connected, self.subscribed = threading.Event(), threading.Event()
         self.subscription_mid: int | None = None
-        self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"drone-pipeline-test-{time.time_ns()}")
+        client_id = f"drone-pipeline-test-{time.time_ns()}"
+        # Paho 2.x exposes the versioned callback API; the project dependency
+        # is intentionally unpinned and the local 1.x client uses its legacy
+        # API, whose callback arguments are also accepted by our handlers.
+        callback_api = getattr(mqtt, "CallbackAPIVersion", None)
+        self.client = (
+            mqtt.Client(callback_api.VERSION2, client_id=client_id)
+            if callback_api is not None
+            else mqtt.Client(client_id=client_id)
+        )
         self.client.on_connect, self.client.on_subscribe, self.client.on_message = self.on_connect, self.on_subscribe, self.on_message
 
     def on_connect(self, client, _userdata, _flags, reason_code, _properties=None):
@@ -65,9 +74,13 @@ class Probe:
 
     def publish(self, payload: dict) -> None:
         info = self.client.publish("drone/mission", json.dumps(payload), qos=1)
-        info.wait_for_publish(timeout=5)
         if info.rc != mqtt.MQTT_ERR_SUCCESS:
             raise RuntimeError(f"mission publish rc={info.rc}")
+        deadline = time.monotonic() + 5
+        while not info.is_published() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if not info.is_published():
+            raise RuntimeError("mission publish timed out")
 
     def close(self) -> None:
         self.client.disconnect()

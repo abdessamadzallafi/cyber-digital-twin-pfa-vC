@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,12 +13,12 @@ from typing import Any, Mapping
 import paho.mqtt.client as mqtt
 from sqlalchemy import text
 
-from backend.database import SessionLocal, SensorReading, Alert, Mission, Incident, engine as db_engine, Base as DatabaseBase
+from backend.database import SessionLocal, SensorReading, Alert, Incident, engine as db_engine, verify_schema
 from backend.ml.anomaly_detector import load_models
 from backend.ml.prediction_service import load_prediction_models
 from backend.mqtt_listener import metrics as mqtt_metrics, start_mqtt, stop_mqtt
 from backend.logger import logger
-from backend.auth import authenticate_user, create_access_token, get_current_user, ACCESS_TOKEN_EXPIRE_MINUTES
+from backend.auth import authenticate_user, create_access_token, get_current_user, jwt_auth_middleware, ACCESS_TOKEN_EXPIRE_MINUTES
 from smart_port.application.router import router as platform_router
 from backend.api.router import api_router
 from backend.core.config import settings
@@ -29,7 +30,7 @@ from smart_port.communication.udp_telemetry import start_udp_telemetry
 from smart_port.config import settings as platform_settings
 from backend.events.normalizer import EventNormalizer
 from backend.events.contracts import Transport as EventTransport
-from backend.mission_planner import create_mission
+from smart_port.data.data_lake import lake_summary
 
 connected_websockets = set()
 update_queue = asyncio.Queue(maxsize=settings.websocket_queue_size)
@@ -86,12 +87,8 @@ async def lifespan(_app: FastAPI):
     global loop, udp_transport, mqtt_thread, broadcast_task
     settings.validate_for_runtime()
     
-    # Ensure all database tables exist
-    try:
-        DatabaseBase.metadata.create_all(bind=db_engine)
-        logger.info("Database tables initialized successfully")
-    except Exception:
-        logger.exception("Database table initialization failed; continuing")
+    verify_schema(db_engine)
+    logger.info("Existing database schema verified")
     
     loop = asyncio.get_running_loop()
     try:
@@ -131,7 +128,7 @@ async def lifespan(_app: FastAPI):
         connected_websockets.clear()
 
 
-app = FastAPI(title="Smart Port Security Platform", lifespan=lifespan)
+app = FastAPI(title="SecurIoT-Port", lifespan=lifespan)
 app.include_router(platform_router)
 app.include_router(api_router)
 
@@ -148,6 +145,7 @@ app.add_middleware(
     allow_headers=["*"],
     allow_credentials=True,
 )
+app.middleware("http")(jwt_auth_middleware)
 app.middleware("http")(audit_http_requests)
 
 async def broadcast():
@@ -163,6 +161,14 @@ async def broadcast():
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    token = websocket.query_params.get("token")
+    try:
+        if not token:
+            raise HTTPException(status_code=401, detail="WebSocket token missing")
+        get_current_user(token)
+    except HTTPException:
+        await websocket.close(code=1008, reason="WebSocket authentication failed")
+        return
     await websocket.accept()
     connected_websockets.add(websocket)
     try:
@@ -389,202 +395,3 @@ def simulate_impossible(current_user: dict = Depends(get_current_user)):
     return {"status": "Valeur impossible envoyée"}
 
 # ---------- MISSION MANUELLE (protégée) ----------
-@app.post("/force_mission/{device_id}")
-def force_mission(device_id: str, current_user: dict = Depends(get_current_user)):
-    try:
-        create_mission(device_id, "manual")
-    except RuntimeError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
-    return {"status": f"Mission manuelle envoyée à {device_id}"}
-
-# ---------- RESEAU ----------
-@app.get("/network/flow/{device_id}")
-def get_network_flow(device_id: str, limit: int = 100):
-    db = SessionLocal()
-    flows = db.query(SensorReading).filter(SensorReading.device_id == device_id)\
-              .order_by(SensorReading.received_at.desc()).limit(limit).all()
-    result = [{
-        "timestamp": f.timestamp,
-        "ip_src": f.ip_src,
-        "mac_src": f.mac_src,
-        "packet_size": f.packet_size
-    } for f in flows]
-    db.close()
-    return result
-
-@app.get("/network/stats")
-def get_network_stats():
-    db = SessionLocal()
-    alerts = db.query(Alert).filter(Alert.alert_type.in_(["network_flood", "unknown_ip"]))\
-               .order_by(Alert.created_at.desc()).limit(50).all()
-    db.close()
-    return alerts
-
-# ---------- DRONE ----------
-@app.get("/drone/status")
-def get_drone_status():
-    """Legacy-dashboard-friendly facade over the canonical drone manager."""
-    from backend.ros.drone_manager import drone_manager
-    return drone_manager.status()
-
-@app.get("/missions")
-def get_missions():
-    db = SessionLocal()
-    missions = db.query(Mission).order_by(Mission.created_at.desc()).limit(20).all()
-    db.close()
-    return missions
-
-# ---------- RAPPORT PDF ----------
-@app.post("/report/{device_id}")
-def create_report(device_id: str, anomaly_type: str = "ml_anomaly", current_user: dict = Depends(get_current_user)):
-    from backend.report_generator import generate_incident_report
-    filename = generate_incident_report(device_id, anomaly_type)
-    return {"filename": filename, "status": "Report generated"}
-
-# ---------- AUTRES (existants) ----------
-@app.get("/equipments")
-def get_equipments():
-    db = SessionLocal()
-    ids = [row[0] for row in db.query(SensorReading.device_id).distinct().all()]
-    db.close()
-    return {"equipments": ids}
-
-@app.get("/measures/{device_id}")
-def get_measures(device_id: str, limit: int = 100):
-    db = SessionLocal()
-    readings = db.query(SensorReading).filter(SensorReading.device_id == device_id)\
-                  .order_by(SensorReading.received_at.desc()).limit(limit).all()
-    db.close()
-    return readings
-
-@app.get("/alerts")
-def get_alerts(limit: int = 100):
-    db = SessionLocal()
-    alerts = db.query(Alert).order_by(Alert.created_at.desc()).limit(limit).all()
-    db.close()
-    return alerts
-
-@app.get("/ml/anomalies")
-def get_ml_anomalies(limit: int = 50):
-    db = SessionLocal()
-    anomalies = db.query(Alert).filter(Alert.alert_type == "ml_anomaly")\
-                    .order_by(Alert.created_at.desc()).limit(limit).all()
-    db.close()
-    return anomalies
-
-@app.get("/security/events")
-def get_security_events(limit: int = 50):
-    db = SessionLocal()
-    events = db.query(Alert).filter(Alert.alert_type.in_(
-        ["flood", "unknown_device", "bad_token", "wrong_topic", "network_flood", "unknown_ip"]))\
-              .order_by(Alert.created_at.desc()).limit(limit).all()
-    db.close()
-    return events
-
-# ---------- INCIDENT MANAGEMENT ----------
-@app.post("/incidents")
-def create_incident(device_id: str, anomaly_type: str = "ml_anomaly", severity: str = "high",
-                    description: str = "", current_user: dict = Depends(get_current_user)):
-    db = SessionLocal()
-    incident = Incident(
-        device_id=device_id,
-        anomaly_type=anomaly_type,
-        severity=severity,
-        description=description
-    )
-    db.add(incident)
-    db.commit()
-    db.refresh(incident)
-    db.close()
-    return incident
-
-@app.get("/incidents")
-def get_incidents(status: str = None, limit: int = 50):
-    db = SessionLocal()
-    query = db.query(Incident).order_by(Incident.created_at.desc())
-    if status:
-        query = query.filter(Incident.status == status)
-    incidents = query.limit(limit).all()
-    db.close()
-    return incidents
-
-@app.put("/incidents/{incident_id}/resolve")
-def resolve_incident(incident_id: int, current_user: dict = Depends(get_current_user)):
-    db = SessionLocal()
-    incident = db.query(Incident).filter(Incident.id == incident_id).first()
-    if incident:
-        incident.status = "resolved"
-        incident.resolved_at = datetime.utcnow()
-        db.commit()
-    db.close()
-    return {"status": "updated"}
-
-# ---------- TIMELINE ----------
-@app.get("/timeline")
-def get_timeline(limit: int = 50):
-    db = SessionLocal()
-    alerts = db.query(Alert).order_by(Alert.created_at.desc()).limit(limit).all()
-    incidents = db.query(Incident).order_by(Incident.created_at.desc()).limit(limit).all()
-    missions = db.query(Mission).order_by(Mission.created_at.desc()).limit(limit).all()
-
-    events = []
-    for a in alerts:
-        events.append({"time": a.created_at.isoformat(), "type": "alert", "message": a.message, "device": a.device_id})
-    for i in incidents:
-        events.append({"time": i.created_at.isoformat(), "type": "incident", "message": f"Incident #{i.id} - {i.anomaly_type}", "device": i.device_id})
-    for m in missions:
-        events.append({"time": m.created_at.isoformat(), "type": "mission", "message": f"Mission {m.mission_id} - {m.status}", "device": m.device_id})
-
-    # Trier par date décroissante
-    events.sort(key=lambda x: x["time"], reverse=True)
-    return events[:limit]
-
-# ---------- DEVICE MANAGER ENRICHED ----------
-@app.get("/devices")
-def get_all_devices():
-    db = SessionLocal()
-    # Récupère tous les device_id distincts, avec leur dernière lecture
-    device_ids = [row[0] for row in db.query(SensorReading.device_id).distinct().all()]
-    devices = []
-    now = time.time()
-    for dev_id in device_ids:
-        last = db.query(SensorReading).filter(SensorReading.device_id == dev_id).order_by(SensorReading.received_at.desc()).first()
-        if last:
-            active = (now - last.timestamp) < 10  # actif si moins de 10s
-            # Calcul simplifié de la zone (basé sur le type ou le nom)
-            zone = "Inconnue"
-            if "temp" in dev_id or "hum" in dev_id or "vib" in dev_id:
-                zone = "Conteneur"
-            elif "cam" in dev_id:
-                zone = "Sécurité"
-            elif "gps" in dev_id:
-                zone = "Véhicule"
-            elif "gate" in dev_id:
-                zone = "Accès"
-            elif "smoke" in dev_id:
-                zone = "Entrepôt"
-            elif "pres" in dev_id:
-                zone = "Parking"
-            elif "drone" in dev_id:
-                zone = "Inspection"
-            # Récupérer le health score depuis l'endpoint dédié (ou calculer)
-            # Pour simplifier, on appelle la fonction get_device_health
-            health = get_device_health(dev_id)["health_score"]
-            devices.append({
-                "device_id": dev_id,
-                "type": last.type,
-                "zone": zone,
-                "online": active,
-                "last_value": last.value or last.status or last.people_count,
-                "last_update": last.timestamp,
-                "health_score": health
-            })
-    db.close()
-    return devices
-
-@app.get("/drone/missions")
-def get_drone_missions(current_user: dict = Depends(get_current_user)):
-    db = SessionLocal()
-    missions = db.query(Mission).filter(Mission.drone_id == "drone_01").order_by(Mission.created_at.desc()).limit(10).all()
-    db.close()
-    return missions

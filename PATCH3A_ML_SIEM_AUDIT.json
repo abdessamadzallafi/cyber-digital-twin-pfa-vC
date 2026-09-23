@@ -1,0 +1,41 @@
+{
+  "verdict": "PATCH3A_AUDIT_COMPLETE",
+  "DATABASE_MODIFIED": 0,
+  "PRODUCTION_DATABASE_MODIFIED": 0,
+  "CODE_MODIFIED": 0,
+  "mode": "read-only",
+  "project": "/home/abdo/Downloads/CyberPort",
+  "database_evidence": {
+    "data/digital_twin.db": {
+      "sha256": "8d7858a5590ea56ebd432cecbb38ac43f73571f50a94a3e0cf2a69a92efa9cb6",
+      "size": 43421696,
+      "integrity_check": "ok",
+      "counts": {"sensor_readings": 29069, "alerts": 47679, "siem_events": 111550, "incidents": 74, "missions": 35},
+      "alerts": {"http_request": 29871, "ml_anomaly": 13614, "unknown_ip": 2224, "flood": 1004, "network_flood": 546, "bad_token": 148, "login_success": 104, "wrong_topic": 70, "login_failed": 38, "drone_mission_completed": 25, "drone_mission_started": 25, "unknown_device": 8, "drone_mission_rejected": 2},
+      "incidents": {"ml_anomaly": 51, "network_attack": 18, "impossible_values": 4, "login_failed": 1},
+      "siem_events": {"http_request": 102547, "ml_anomaly": 6807, "unknown_ip": 1112, "flood": 502, "network_flood": 273, "login_success": 158, "bad_token": 74, "login_failed": 38, "wrong_topic": 35, "unknown_device": 4},
+      "missions": {"completed": 33, "created": 2}
+    },
+    "digital_twin.db": {
+      "sha256": "d660f1b5bc6eff393426ca2d9dab255e6004770872d9c9647963cac7b85a7cc1",
+      "size": 15392768,
+      "integrity_check": "ok",
+      "counts": {"sensor_readings": 11180, "alerts": 8077, "siem_events": 43639, "incidents": 50, "missions": 157},
+      "alerts": {"ml_anomaly": 5794, "http_request": 931, "unknown_ip": 758, "flood": 264, "network_flood": 132, "login_success": 100, "bad_token": 54, "login_failed": 15, "wrong_topic": 14, "unknown_device": 12, "drone_mission_rejected": 3},
+      "incidents": {"ml_anomaly": 39, "network_attack": 9, "login_failed": 1, "login_success": 1},
+      "siem_events": {"http_request": 39889, "ml_anomaly": 2897, "unknown_ip": 379, "login_success": 221, "flood": 132, "network_flood": 66, "bad_token": 27, "login_failed": 15, "wrong_topic": 7, "unknown_device": 6},
+      "missions": {"aborted": 150, "completed": 7}
+    }
+  },
+  "confirmed_findings": [
+    "MQTT decision path can create one direct alert and one AlertManager alert for one SIEM event.",
+    "ml_anomaly can escalate to incident and drone mission through ActionDispatcher.",
+    "network_flood is deterministic network detection and is mapped to incident trigger network_attack.",
+    "Dashboard stats.attacks aggregates security/network categories and excludes ml_anomaly.",
+    "Incident producers have different deduplication rules."
+  ],
+  "authorized_artifacts": [
+    "PATCH3A_ML_SIEM_AUDIT.md",
+    "PATCH3A_ML_SIEM_AUDIT.json"
+  ]
+}

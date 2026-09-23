@@ -26,6 +26,8 @@ class SmartPortSiem:
                           severity=payload.severity.value, message=payload.message,
                           payload=json.dumps(payload.payload, default=str), occurred_at=payload.occurred_at or datetime.utcnow(),
                           correlation_id=payload.correlation_id)
+        if not event.correlation_id:
+            event.correlation_id = AlertManager.functional_dedup_key(event)
         self.db.add(event)
         self.db.flush()  # makes this event visible to correlation before commit
         severity, correlation = self.correlation.correlate(self.db, event)

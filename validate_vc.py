@@ -8,12 +8,14 @@ import os
 import sqlite3
 import time
 from collections import defaultdict
+from pathlib import Path
 
 import requests
 
 BASE = "http://localhost:8000"
 DASH = "http://localhost:3000"
-DB_PATH = "/home/abdo/Downloads/cyber-digital-twin-pfa-vC/digital_twin.db"
+PROJECT_ROOT = Path(__file__).resolve().parent
+DB_PATH = PROJECT_ROOT / "digital_twin.db"
 
 report = defaultdict(list)
 
@@ -137,7 +139,7 @@ step("POST /api/v1/ai/predict", "OK" if r.status_code == 200 else "FAIL", f"{r.s
 if r.ok:
     dump("predict response", r.json())
 
-models_dir = "/home/abdo/Downloads/cyber-digital-twin-pfa-vC/backend/ml/models"
+models_dir = "/home/abdo/Downloads/CyberPort/backend/ml/models"
 if os.path.isdir(models_dir):
     files = [f for f in os.listdir(models_dir) if f.endswith((".pkl", ".joblib", ".bin", ".pt"))]
     step("model files present", "OK", f"{len(files)} files")
@@ -220,8 +222,8 @@ step("websocket endpoint", "PART", "backend logs show /ws accepted; curl upgrade
 
 # 9. Tests
 print("\n=== 9. Tests ===")
-os.system("cd /home/abdo/Downloads/cyber-digital-twin-pfa-vC && python3 -m compileall backend smart_port > /tmp/vc_compileall.log 2>&1")
-os.system("cd /home/abdo/Downloads/cyber-digital-twin-pfa-vC && python3 -m pytest -q > /tmp/vc_pytest.log 2>&1")
+os.system(f"cd {PROJECT_ROOT} && python3 -m compileall backend smart_port > /tmp/vc_compileall.log 2>&1")
+os.system(f"cd {PROJECT_ROOT} && python3 -m pytest -q > /tmp/vc_pytest.log 2>&1")
 compile_rc = os.system("tail -n 40 /tmp/vc_compileall.log >/dev/null 2>&1")
 print("Compileall/pytest logs written to /tmp/vc_compileall.log and /tmp/vc_pytest.log")
 

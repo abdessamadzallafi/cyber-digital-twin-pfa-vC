@@ -1,6 +1,7 @@
 import time
 from collections import defaultdict
 from backend.logger import logger
+from smart_port.edge.device_registry import DEVICE_REGISTRY
 
 # Suivi par device_id : fenêtre glissante de 10 secondes
 window = 10.0  # secondes
@@ -50,13 +51,15 @@ def process_network_data(device_id, ip_src, mac_src, packet_size, timestamp=None
     return network_info
 
 def check_network_anomalies(device_id, net_info):
-    """Règles simples IDS réseau"""
+    """Règles simples IDS réseau basées sur l'inventaire d'équipements de confiance."""
     alerts = []
-    # Flood si plus de 20 paquets en 10s
     if net_info["packet_count"] > 20:
         alerts.append(("network_flood", f"Flood réseau {device_id}: {net_info['packet_count']} paquets/10s"))
-    # IP inconnue (simplifié : vérifier contre une liste autorisée)
-    # Ici, on considère que toutes les IP en 192.168.1.x sont autorisées
-    if net_info["ip_src"] and not net_info["ip_src"].startswith("192.168.1."):
-        alerts.append(("unknown_ip", f"IP inconnue {net_info['ip_src']}"))
+    ip_src = net_info.get("ip_src")
+    if ip_src:
+        profile = DEVICE_REGISTRY.get(device_id)
+        if profile is None:
+            alerts.append(("unknown_ip", f"IP inconnue {ip_src} pour équipement non enregistré {device_id}"))
+        elif ip_src != profile.ip:
+            alerts.append(("unknown_ip", f"IP inconnue {ip_src} pour {device_id}"))
     return alerts

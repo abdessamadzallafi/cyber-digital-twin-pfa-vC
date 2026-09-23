@@ -1,0 +1,161 @@
+{
+  "audit": "PATCH4A_REALTIME_AUDIT",
+  "project": "/home/abdo/Downloads/CyberPort",
+  "mode": "READ_ONLY",
+  "scope": "Backend REST WebSocket dashboard real-time coherence",
+  "verdict": {
+    "PATCH4A_AUDIT_COMPLETE": true,
+    "DATABASE_MODIFIED": 0,
+    "PRODUCTION_DATABASE_MODIFIED": 0,
+    "CODE_MODIFIED": 0
+  },
+  "websocket_backend": {
+    "endpoint": "backend/main.py:167-183 /ws",
+    "authentication": {
+      "method": "JWT query parameter token",
+      "validation": "get_current_user(token) before accept",
+      "invalid_close_code": 1008,
+      "revalidation_after_connect": false,
+      "refresh_token": false
+    },
+    "client_registry": "connected_websockets set",
+    "queue": {
+      "name": "update_queue",
+      "maxsize_source": "settings.websocket_queue_size",
+      "overflow_behavior": "drop message, increment metrics.websocket_dropped",
+      "replay": false,
+      "per_client_buffer": false,
+      "snapshot_on_connect": false
+    },
+    "heartbeat": false,
+    "event_frequency": "event-driven by processed MQTT telemetry; no periodic WS heartbeat"
+  },
+  "event_contracts": [
+    {
+      "event_type": "drone_telemetry",
+      "producer": "backend/mqtt_listener.py:153-166",
+      "payload_fields": ["type", "event", "mission_id", "drone_id", "status", "position.x", "position.y", "position.altitude", "battery", "timestamp"],
+      "dashboard_consumer": "dashboard/src/App.jsx:136-146",
+      "notes": "Also emitted for valid mission_started, mission_completed and mission_aborted lifecycle updates"
+    },
+    {
+      "event_type": "telemetry",
+      "producer": "backend/mqtt_listener.py:212-215",
+      "payload_fields": ["event", "device_id", "type", "status", "last_value", "alerts", "anomaly_score", "network", "action", "timestamp"],
+      "dashboard_consumer": "dashboard/src/App.jsx:148-150",
+      "notes": "Updates in-memory device overlay and event journal; does not directly update statistics, incidents or missions"
+    }
+  ],
+  "dashboard_websocket": {
+    "file": "dashboard/src/App.jsx",
+    "url": "REACT_APP_WS_URL or API URL transformed http->ws plus /ws",
+    "token_transport": "query parameter token, URL encoded",
+    "onmessage": true,
+    "onopen": false,
+    "onerror": false,
+    "onclose": false,
+    "reconnect": false,
+    "backoff": false,
+    "heartbeat": false,
+    "cleanup": "React effect cleanup calls ws.current?.close()",
+    "old_drone_contract_found": false,
+    "current_drone_contract": "update.type === 'drone_telemetry'",
+    "json_parse_guard": false,
+    "connection_status_ui": false
+  },
+  "polling": [
+    {"endpoint": "/statistics", "interval_seconds": 5, "data": "statistics, alert count, attacks, ML anomalies", "websocket_equivalent": false, "necessary_currently": true},
+    {"endpoint": "/risk", "interval_seconds": 5, "data": "risk level and score", "websocket_equivalent": false, "necessary_currently": true},
+    {"endpoint": "/devices", "interval_seconds": 5, "data": "DB inventory, online, last_value, last_update, health", "websocket_equivalent": "partial telemetry overlay", "necessary_currently": true},
+    {"endpoint": "/health/{device_id}", "interval_seconds": 5, "data": "health_score per device", "websocket_equivalent": false, "necessary_currently": true},
+    {"endpoint": "/incidents", "interval_seconds": 5, "data": "incident list", "websocket_equivalent": false, "necessary_currently": true},
+    {"endpoint": "/missions", "interval_seconds": 5, "data": "mission list", "websocket_equivalent": "partial drone lifecycle only", "necessary_currently": true},
+    {"endpoint": "/timeline", "interval_seconds": 5, "data": "alerts, incidents and missions timeline", "websocket_equivalent": false, "necessary_currently": true},
+    {"endpoint": "/drone/status", "interval_seconds": 5, "data": "runtime drone status", "websocket_equivalent": "drone_telemetry", "necessary_currently": "snapshot useful, but dashboard currently ignores payload for rendered drone state"},
+    {"endpoint": "/api/v1/datalake", "interval_seconds": 5, "data": "Data Lake summary", "websocket_equivalent": false, "necessary_currently": true}
+  ],
+  "one_off_calls": [
+    {"endpoint": "/token", "purpose": "authentication"},
+    {"endpoint": "/measures/{device_id}?limit=24", "purpose": "device history on selection"},
+    {"endpoint": "/report/{device_id}", "purpose": "user-triggered report"},
+    {"endpoint": "/simulate/*", "purpose": "user-triggered simulation"},
+    {"endpoint": "/force_mission/{device_id}", "purpose": "user-triggered mission"}
+  ],
+  "data_matrix": [
+    {"data": "devices", "source": "/devices plus WS telemetry", "update_method": "REST 5s plus WS overlay", "current_status": "partially live", "risk": "no freshness timeout; online field not used as rendered status"},
+    {"data": "alerts", "source": "/statistics and telemetry.alerts", "update_method": "REST 5s plus generic WS event", "current_status": "periodic count, partial event journal", "risk": "no dedicated alert WS contract or immediate list refresh"},
+    {"data": "security events", "source": "WS telemetry or /timeline fallback", "update_method": "event-driven plus REST", "current_status": "live only while WS is connected", "risk": "local journal can be stale and mixes event categories"},
+    {"data": "incidents", "source": "/incidents", "update_method": "REST 5s", "current_status": "periodic", "risk": "up to polling interval delay"},
+    {"data": "missions", "source": "/missions plus drone telemetry lifecycle", "update_method": "REST 5s plus partial WS", "current_status": "periodic list, partial live runtime status", "risk": "no dedicated mission event and list waits for polling"},
+    {"data": "drone", "source": "drone_telemetry WS and /drone/status", "update_method": "WS event-driven plus REST snapshot", "current_status": "WS live after first telemetry", "risk": "REST payload ignored; stale position persists indefinitely"},
+    {"data": "statistics", "source": "/statistics", "update_method": "REST 5s", "current_status": "periodic", "risk": "not push real-time"},
+    {"data": "health", "source": "/health and /health/{device_id}", "update_method": "REST 5s", "current_status": "periodic health score", "risk": "health score is not connectivity/liveness"},
+    {"data": "Data Lake", "source": "/api/v1/datalake", "update_method": "REST 5s", "current_status": "periodic snapshot", "risk": "no push notification"}
+  ],
+  "freshness": {
+    "backend_existing_threshold_seconds": 10,
+    "locations": ["backend/main.py:203-205", "backend/main.py:568-572", "backend/main.py:239"],
+    "dashboard_drone_timeout": false,
+    "dashboard_last_message_timestamp": false,
+    "dashboard_ws_status": false,
+    "drone_updated_at_received_but_compared": false,
+    "stale_disconnected_unknown_states": false,
+    "finding": "The backend has a 10-second active threshold for selected REST responses, but the dashboard does not apply an equivalent stale/disconnected policy to drone WebSocket state."
+  },
+  "auth_and_reconnect": {
+    "rest_auth": "Bearer token via authFetch",
+    "websocket_auth": "JWT query parameter",
+    "expired_token_after_connection_handled": false,
+    "close_1008_handled_frontend": false,
+    "reconnect_after_network_loss": false,
+    "old_socket_cleanup": "React effect cleanup only",
+    "duplicate_listener_risk": "limited by cleanup, but no explicit socket generation guard",
+    "heartbeat": false
+  },
+  "end_to_end": {
+    "mqtt_telemetry": ["MQTT callback", "ingress_queue", "mqtt_worker", "process_message", "normalize", "persist/decision", "publish telemetry", "update_queue", "broadcast", "dashboard onmessage", "device overlay/events"],
+    "mqtt_anomaly": ["MQTT telemetry", "make_decision", "SmartPortSiem.collect", "alert/SIEM/incident according to branch", "publish telemetry with alerts/anomaly_score/action", "dashboard events/device overlay"],
+    "loss_or_delay_points": ["MQTT ingress queue overflow", "worker backlog", "WebSocket update_queue overflow", "client disconnected", "no replay/snapshot", "no frontend reconnect", "secondary REST cards wait for 5-second polling", "malformed WS JSON is not guarded"]
+  },
+  "tests_identified": [
+    "tests/test_main_mqtt.py",
+    "tests/test_mqtt_listener_event.py",
+    "tests/test_mqtt_safety.py",
+    "tests/test_event_normalizer.py",
+    "tests/test_udp_common_event.py",
+    "tests/test_http_common_event.py",
+    "tests/test_stabilisation_e8.py",
+    "tests/test_final_stabilisation_predict_reports.py",
+    "tests/test_siem_report_regression.py",
+    "tests/test_drone_simulator.py"
+  ],
+  "coverage_gaps": [
+    "frontend WebSocket lifecycle callbacks",
+    "reconnection and backoff",
+    "JWT expiration after connection",
+    "stale/disconnected drone state",
+    "heartbeat",
+    "queue overflow/replay",
+    "REST and WS convergence for incidents/missions/statistics",
+    "malformed WebSocket JSON"
+  ],
+  "recommended_patch4b": [
+    "Add explicit frontend WS connection status and lifecycle handlers.",
+    "Add bounded reconnect with backoff and explicit old-socket cleanup.",
+    "Handle close code 1008 as authentication failure.",
+    "Define and apply a validated freshness policy using existing timestamps and the existing 10-second backend threshold only after confirming the business rule.",
+    "Merge /drone/status response into rendered drone state.",
+    "Keep polling as snapshot/fallback until dedicated WS contracts cover secondary data.",
+    "Add contract tests for reconnect, stale drone, invalid JSON and queue loss."
+  ],
+  "tests_executed": false,
+  "database_integrity_checks_executed": false,
+  "database_hashes_before": {
+    "data/digital_twin.db": "8d7858a5590ea56ebd432cecbb38ac43f73571f50a94a3e0cf2a69a92efa9cb6",
+    "digital_twin.db": "d660f1b5bc6eff393426ca2d9dab255e6004770872d9c9647963cac7b85a7cc1"
+  },
+  "database_hashes_after": {
+    "data/digital_twin.db": "8d7858a5590ea56ebd432cecbb38ac43f73571f50a94a3e0cf2a69a92efa9cb6",
+    "digital_twin.db": "d660f1b5bc6eff393426ca2d9dab255e6004770872d9c9647963cac7b85a7cc1"
+  }
+}

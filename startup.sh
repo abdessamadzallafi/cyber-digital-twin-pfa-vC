@@ -33,19 +33,19 @@ python3 -m pip show fastapi &>/dev/null && echo "✓ FastAPI installed" || {
 }
 echo ""
 
-# Initialize database
-echo "💾 Initializing database..."
+# Verify existing database
+echo "💾 Verifying existing database..."
 python3 << 'PYEOF'
-from backend.database import Base, engine
-Base.metadata.create_all(bind=engine)
-print("✓ Database tables created/verified")
+from backend.database import verify_schema
+verify_schema()
+print("✓ Existing database schema verified")
 PYEOF
 echo ""
 
 # Verify data lake
 echo "📂 Verifying data lake structure..."
-mkdir -p data_lake/{telemetry,security,missions,network,logs}
-echo "✓ Data lake directories ready"
+test -d data_lake
+echo "✓ Existing data lake directory verified"
 echo ""
 
 # Startup options

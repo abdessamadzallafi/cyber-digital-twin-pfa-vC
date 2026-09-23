@@ -74,12 +74,8 @@ def make_decision(data, net_info):
         threat_level = "red"
         raw_score = max(raw_score, 0.8)
 
-    # 6. Autonomous inspection dispatch for safety, cyber and drone anomalies.
-    create_mission = False
-    mission_domains = {"temperature", "battery", "drone_trajectory", "sensor_failure", "flood_attack", "network_traffic"}
-    if (ml_anomaly and dev_type in ["vibration", "smoke", "temperature"]) or any(item.domain in mission_domains for item in advanced_anomalies):
-        create_mission = True
-
+    # 6. Platform decision: detection and correlation only.
+    # Operational drone dispatch is intentionally outside SecurIoT-Port.
     any_anomaly = ml_anomaly or net_ml_anomaly or bool(advanced_anomalies)
     correlation = correlate(alerts, raw_score if any_anomaly else 0.0)
     return {
@@ -87,8 +83,9 @@ def make_decision(data, net_info):
         "anomaly": any_anomaly,
         "anomaly_score": raw_score if any_anomaly else 0.0,
         "threat_level": "red" if correlation["severity"] in {"high", "critical"} else threat_level,
-        "dispatch_recommended": create_mission or correlation["dispatch_drone"],
-        "create_mission": create_mission or correlation["dispatch_drone"],
+        # Kept for API/caller compatibility; no operational mission is created.
+        "dispatch_recommended": False,
+        "create_mission": False,
         "alerts": alerts,
         "ai_predictions": [{"domain": item.domain, "anomalous": item.anomalous, "score": item.score} for item in predictions]
     }

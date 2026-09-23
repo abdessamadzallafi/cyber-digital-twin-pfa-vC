@@ -7,9 +7,6 @@ from backend.database.models import Base, SensorReading, Alert, NetworkFlow, Mis
 db_engine = engine
 DatabaseBase = Base
 
-Base.metadata.create_all(bind=engine)
-
-
 def _upgrade_legacy_schema() -> None:
     """Add non-destructive fields required by the correlation lifecycle."""
     columns = {column["name"] for column in inspect(engine).get_columns("incidents")}
@@ -29,6 +26,21 @@ def _upgrade_legacy_schema() -> None:
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_missions_status ON missions (status)"))
 
 
-_upgrade_legacy_schema()
+def initialize_schema() -> None:
+    """Explicitly create/upgrade the schema for a controlled setup operation."""
+    Base.metadata.create_all(bind=engine)
+    _upgrade_legacy_schema()
 
-__all__ = ["SessionLocal", "engine", "db_engine", "Base", "DatabaseBase", "SensorReading", "Alert", "NetworkFlow", "Mission", "Incident", "SiemEvent", "Device", "Drone", "Report", "LogEntry"]
+
+def verify_schema(bind=engine) -> None:
+    """Verify that the existing runtime database has the required tables."""
+    required = {
+        "alerts", "devices", "drones", "incidents", "logs", "missions",
+        "network_flows", "reports", "sensor_readings", "siem_events",
+    }
+    actual = set(inspect(bind).get_table_names())
+    missing = sorted(required - actual)
+    if missing:
+        raise RuntimeError(f"Database schema is incomplete; missing tables: {', '.join(missing)}")
+
+__all__ = ["SessionLocal", "engine", "db_engine", "Base", "DatabaseBase", "SensorReading", "Alert", "NetworkFlow", "Mission", "Incident", "SiemEvent", "Device", "Drone", "Report", "LogEntry", "initialize_schema", "verify_schema"]

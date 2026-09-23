@@ -1,7 +1,7 @@
 # Smart Port Security Platform — Terminal Tanger Med
 
 Industrial Smart Port Security Platform combining IoT supervision, cybersecurity,
-AI anomaly detection, autonomous inspection missions, a digital twin and a React
+AI anomaly detection, autonomous inspection missions, and a React
 command dashboard. The original working prototype remains fully compatible.
 
 ## Layered architecture
@@ -43,7 +43,7 @@ application level; the platform does not yet capture live network traffic.
 
 ```bash
 git clone <repository-url>
-cd cyber-digital-twin-pfa-vC
+cd CyberPort
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt

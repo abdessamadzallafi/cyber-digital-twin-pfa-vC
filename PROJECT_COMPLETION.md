@@ -206,16 +206,15 @@ SMART_PORT_API_PORT=8000
 - [Drone Architecture](docs/DRONE_ARCHITECTURE.md)
 - [Refactoring Notes](docs/REFACTORING.md)
 
-## Status: ✅ READY FOR PRODUCTION
+## Statut : 🧪 Prototype expérimental validé
 
-The project is fully configured, all dependencies are installed, the database is initialized, and all modules are verified. The application is ready for:
+The project is fully configured, all dependencies are installed, the database is initialized, and all modules are verified. The application is validated for:
 - Local development
-- Docker deployment
-- Production deployment with PostgreSQL
-- Integration testing with simulator suite
+- Docker demonstration deployment
+- Prototype integration testing with simulator suite
 
 ---
 
-**Project**: Cyber-Digital-Twin (Smart Port Security Platform)
+**Projet** : SecurIoT-Port
 **Completed**: 2026-08-17
-**Status**: ✅ Production Ready
+**Statut** : 🧪 Prototype expérimental validé

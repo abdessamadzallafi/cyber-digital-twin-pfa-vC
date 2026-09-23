@@ -19,8 +19,6 @@ class DeviceProfile:
     mac: str
 
 
-DRONE_TOKEN = os.getenv("SMART_PORT_DRONE_TOKEN", "")
-
 DEVICE_REGISTRY: Dict[str, DeviceProfile] = {
     "grue_G01": DeviceProfile("grue_G01", "temperature", "quay-crane", "tk_temp123", "port/gantry_crane/temperature", "192.168.1.10", "AA:BB:CC:DD:EE:01"),
     "station_H01": DeviceProfile("station_H01", "humidity", "weather-station", "tk_hum456", "port/weather/humidity", "192.168.1.11", "AA:BB:CC:DD:EE:02"),
@@ -30,7 +28,6 @@ DEVICE_REGISTRY: Dict[str, DeviceProfile] = {
     "portail_N01": DeviceProfile("portail_N01", "barrier", "north-gate", "tk_gate222", "port/gate/status", "192.168.1.40", "AA:BB:CC:DD:EE:06"),
     "entrepot_E01": DeviceProfile("entrepot_E01", "smoke", "warehouse", "tk_smoke333", "port/warehouse/smoke", "192.168.1.50", "AA:BB:CC:DD:EE:07"),
     "parking_P01": DeviceProfile("parking_P01", "presence", "parking", "tk_pres444", "port/parking/presence", "192.168.1.60", "AA:BB:CC:DD:EE:08"),
-    "drone_01": DeviceProfile("drone_01", "drone", "autonomous-inspection", DRONE_TOKEN, "drone/telemetry", "192.168.1.101", "AA:BB:CC:DD:EE:11"),
 }
 
 # Legacy IDs keep existing attack generators and clients working unchanged.
@@ -58,8 +55,6 @@ def validate_identity(device_id: str, token: str, topic: str) -> list[tuple[str,
         return [("unknown_device", f"Unregistered edge device {device_id}")]
     expected_token, expected_topic = expected
     allowed_topics = {expected_topic}
-    if device_id == "drone_01":
-        allowed_topics.update({"drone/telemetry", "drone/gps", "drone/camera", "drone/mission"})
     alerts = []
     if token != expected_token:
         alerts.append(("bad_token", f"Invalid device credential for {device_id}"))

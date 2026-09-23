@@ -1,8 +1,10 @@
 # backend/auth.py
 from datetime import datetime, timedelta
-from jose import JWTError, jwt
-from fastapi import Depends, HTTPException, status
+
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from jose import JWTError, jwt
 # Use secure password hashing via passlib/bcrypt.
 from passlib.context import CryptContext
 from backend.core.config import settings
@@ -35,6 +37,25 @@ fake_users_db = {
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token")
 
+PUBLIC_ENDPOINTS = frozenset({
+    "/health",
+    "/token",
+    "/api/v1/platform/health",
+    "/api/v1/edge/devices",
+    "/api/v1/devices",
+    "/api/v1/telemetry",
+    "/docs",
+    "/openapi.json",
+    "/favicon.ico",
+    "/manifest.json",
+})
+
+
+def public_auth():
+    """Compatibility dependency for intentionally public endpoints."""
+    return None
+
+
 def _audit_authentication(username: str, success: bool) -> None:
     """Best-effort audit trail; login availability never depends on audit storage."""
     try:
@@ -52,6 +73,7 @@ def _audit_authentication(username: str, success: bool) -> None:
     except Exception:
         logger.exception("Authentication audit failed")
 
+
 def authenticate_user(username: str, password: str):
     user = fake_users_db.get(username)
     if not user or not pwd_context.verify(password, user["hashed_password"]):
@@ -60,11 +82,13 @@ def authenticate_user(username: str, password: str):
     _audit_authentication(username, True)
     return user
 
+
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=15))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
 
 def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
@@ -78,3 +102,26 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     if user is None:
         raise HTTPException(status_code=401, detail="Utilisateur inconnu")
     return user
+
+
+async def jwt_auth_middleware(request: Request, call_next):
+    path = request.url.path
+    method = request.method
+    if method == "OPTIONS" or path in PUBLIC_ENDPOINTS or path.startswith("/docs") or path.startswith("/openapi"):
+        return await call_next(request)
+    auth_header = request.headers.get("authorization")
+    if not auth_header or not auth_header.lower().startswith("bearer "):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "En-tête Authorization manquant"},
+        )
+    token = auth_header.split(" ", 1)[1].strip()
+    try:
+        request.state.current_user = get_current_user(token)
+    except HTTPException as exc:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+            headers=exc.headers,
+        )
+    return await call_next(request)

@@ -297,6 +297,39 @@ class TestDroneTelemetryCommonEvent(MqttListenerEventBase):
         _run(mqtt_listener.process_message(self.raw_drone))
         mqtt_listener._process_drone_telemetry.assert_awaited_once()
 
+    def test_dashboard_drone_payload_uses_canonical_contract(self):
+        dashboard = AsyncMock()
+        telemetry_patch = self.patches[-1]
+        telemetry_patch.stop()
+        with patch.object(mqtt_listener, "_publish_dashboard", dashboard), \
+                patch.object(mqtt_listener, "drone_manager") as manager:
+            manager.update_telemetry.return_value = {
+                "drone_id": "drone_01", "x": 1.0, "y": 2.0,
+                "altitude": 5.0, "battery": 90.0, "status": "flying",
+                "mission_id": "mission-1", "mission_status": "active",
+            }
+            try:
+                _run(mqtt_listener._process_drone_telemetry(self.db, self.raw_drone))
+            finally:
+                telemetry_patch.start()
+
+        payload = dashboard.await_args.args[0]
+        self.assertEqual(payload["type"], "drone_telemetry")
+        self.assertEqual(payload["event"], "drone_telemetry")
+        self.assertEqual(payload["drone_id"], "drone_01")
+        self.assertEqual(payload["mission_id"], "mission-1")
+        self.assertEqual(payload["position"], {"x": 1.0, "y": 2.0, "altitude": 5.0})
+        self.assertEqual(payload["battery"], 90.0)
+
+    def test_drone_payload_uses_null_for_unavailable_fields(self):
+        payload = mqtt_listener._drone_dashboard_payload(
+            {"device_id": "drone_01", "type": "drone", "timestamp": 3.0}
+        )
+        self.assertEqual(payload["type"], "drone_telemetry")
+        self.assertIsNone(payload["mission_id"])
+        self.assertEqual(payload["position"], {"x": None, "y": None, "altitude": None})
+        self.assertIsNone(payload["battery"])
+
 
 # ===========================================================================
 # TEST D — Drone event: CommonEvent is DRONE_EVENT
@@ -337,6 +370,61 @@ class TestDroneEventCommonEvent(MqttListenerEventBase):
         with patch.object(mqtt_listener, "make_decision",
                           side_effect=AssertionError("must not be called")):
             _run(mqtt_listener.process_message(raw))
+
+    def test_mission_event_updates_db_and_dashboard_contract(self):
+        from backend.database.models import Base, Mission
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        engine = create_engine("sqlite://")
+        Base.metadata.create_all(engine)
+        db = sessionmaker(bind=engine)()
+        db.add(Mission(mission_id="mission-1", device_id="entrepot_E01",
+                        drone_id="drone_01", status="created"))
+        db.commit()
+        dashboard = AsyncMock()
+        raw = {
+            "device_id": "drone_01", "type": "drone_event",
+            "event_type": "mission_started", "mission_id": "mission-1",
+            "timestamp": 1.0, "mqtt_topic": "drone/event",
+        }
+        with patch.object(mqtt_listener, "SessionLocal", return_value=db), \
+                patch.object(mqtt_listener, "_publish_dashboard", dashboard), \
+                patch.object(mqtt_listener, "drone_manager") as manager:
+            manager.update_mission_event.return_value = {
+                "drone_id": "drone_01", "mission_id": "mission-1",
+                "status": "flying", "mission_status": "active",
+                "x": 0.0, "y": 0.0, "altitude": 0.0, "battery": 100.0,
+            }
+            _run(mqtt_listener.process_message(raw))
+
+        self.assertEqual(db.query(Mission).one().status, "active")
+        payload = dashboard.await_args.args[0]
+        self.assertEqual(payload["type"], "drone_telemetry")
+        self.assertEqual(payload["mission_id"], "mission-1")
+        self.assertEqual(payload["status"], "active")
+        db.close()
+
+    def test_invalid_mission_event_does_not_change_persisted_state(self):
+        from backend.database.models import Base, Mission
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        engine = create_engine("sqlite://")
+        Base.metadata.create_all(engine)
+        db = sessionmaker(bind=engine)()
+        db.add(Mission(mission_id="mission-1", device_id="entrepot_E01",
+                        drone_id="drone_01", status="created"))
+        db.commit()
+
+        status = mqtt_listener._update_mission_from_event(
+            db,
+            {"event_type": "mission_completed", "mission_id": "mission-1"},
+        )
+
+        self.assertIsNone(status)
+        self.assertEqual(db.query(Mission).one().status, "created")
+        db.close()
 
 
 # ===========================================================================

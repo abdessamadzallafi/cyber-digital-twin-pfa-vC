@@ -8,8 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, Query
 
 from backend.core.dependencies import CurrentUser, get_db, get_siem_service
-from backend.database.models import Alert, Incident, Mission, NetworkFlow, SensorReading, SiemEvent
-from backend.ros.drone_manager import drone_manager
+from backend.database.models import Alert, Incident, NetworkFlow, SensorReading, SiemEvent
 from backend.siem.platform import SmartPortSiem
 from smart_port.data.data_lake import lake_summary
 from smart_port.edge.device_registry import DEVICE_REGISTRY
@@ -23,7 +22,7 @@ def port_map(_: dict = CurrentUser):
         {"device_id": item.device_id, "type": item.device_type, "zone": item.zone,
          "coordinates": {"x": index * 12 + 10, "y": (index % 3) * 24 + 18}}
         for index, item in enumerate(DEVICE_REGISTRY.values())
-    ], "drone": drone_manager.status()}
+    ]}
 
 
 @router.get("/datalake")
@@ -51,10 +50,6 @@ def security_overview(limit: int = Query(50, ge=1, le=500), db=Depends(get_db), 
         "unknown_device": "T1078 – Valid Accounts / unauthorized asset",
         "network_anomaly": "T1046 – Network Service Discovery"}}
 
-
-@router.get("/mission")
-def missions(limit: int = Query(50, ge=1, le=500), db=Depends(get_db), _: dict = CurrentUser):
-    return {"drone": drone_manager.status(), "missions": db.query(Mission).order_by(Mission.created_at.desc()).limit(limit).all()}
 
 
 @router.get("/analytics")
