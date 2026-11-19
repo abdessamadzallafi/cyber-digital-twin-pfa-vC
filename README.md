@@ -1,109 +1,148 @@
-# Smart Port Security Platform — Terminal Tanger Med
+# SecurIoT-Port
+### Simulated IoT Port Supervision, AI Anomaly Detection & Cybersecurity Monitoring
 
-Industrial Smart Port Security Platform combining IoT supervision, cybersecurity,
-AI anomaly detection, autonomous inspection missions, a digital twin and a React
-command dashboard. The original working prototype remains fully compatible.
+SecurIoT-Port is a software platform prototype for supervising a **simulated port environment**. It combines IoT telemetry collection, machine-learning-based anomaly detection, cybersecurity event monitoring, SIEM correlation, and a web dashboard.
 
-## Layered architecture
+> **Scope and disclaimer:** this project uses simulated devices and generated demonstration data. It is not connected to Tanger Med or any real port infrastructure, and it is not a production-certified industrial security system.
+
+## Project overview
+
+The platform brings together the following capabilities:
+
+- **IoT supervision:** collect and display telemetry from simulated port equipment.
+- **MQTT communication:** receive device messages through a Mosquitto broker.
+- **AI/ML anomaly detection:** use an Isolation Forest-based pipeline to identify unusual telemetry patterns.
+- **Cybersecurity monitoring:** inspect simulated security indicators and suspicious activity.
+- **SIEM correlation:** correlate events and support incident/risk visibility.
+- **Operational dashboard:** view equipment, alerts, security events, and platform information.
+- **Incident reporting:** generate reports from platform events.
+- **Simulated response demonstration:** illustrate a response workflow, including simulated inspection missions where enabled.
+
+## Architecture
+
+At a high level, the platform is organized around these components:
 
 ```text
-smart_port/
-├── edge/              # trusted device inventory: drone, cameras, sensors, GPS, barrier
-├── communication/     # MQTT ingestion, REST and UDP telemetry adapters
-├── data/              # operational DB configuration and append-only data lake sink
-├── analytics/         # ML, SIEM correlation and decision support
-├── mission/           # mission planning and ROS2/Gazebo integration boundary
-└── application/       # versioned FastAPI platform API
-
-backend/                # compatibility facade: existing FastAPI API, MQTT worker, ML and security code
-simulation/             # edge device and autonomous-drone simulators
-gazebo/                 # Gazebo world and launch assets
-dashboard/              # React presentation layer
-data_lake/              # daily JSONL telemetry/security/mission evidence
-logs/                   # application logs
-reports/                # generated incident PDFs
+Simulated IoT devices
+        |
+        | MQTT
+        v
+   Mosquitto broker
+        |
+        v
+   FastAPI backend
+   |       |       |
+   |       |       +--> Cybersecurity monitoring & SIEM correlation
+   |       +----------> ML anomaly detection (Isolation Forest)
+   +------------------> Data access, APIs & reporting
+        |
+        v
+   SQLite / JSONL data
+        |
+        v
+   React dashboard
 ```
 
-The complete component responsibilities and compatibility contract are documented
-in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-The backend implementation, dependency injection and API migration contract are
-documented in [docs/BACKEND_ARCHITECTURE.md](docs/BACKEND_ARCHITECTURE.md).
-SIEM collection, correlation, incident response and reporting are documented in
-[docs/SIEM.md](docs/SIEM.md).
-The Isolation Forest training and prediction pipeline is documented in
-[docs/AI_ANOMALY_DETECTION.md](docs/AI_ANOMALY_DETECTION.md).
-Autonomous drone planning, ROS2, MQTT, navigation and compatibility behavior are
-documented in [docs/DRONE_ARCHITECTURE.md](docs/DRONE_ARCHITECTURE.md).
+The repository contains the backend, dashboard, device/attack simulators, data utilities, and Docker configuration. The implementation is evolving; consult the source and configuration files for the current component boundaries.
 
-The MQTT virtual drone is the canonical demonstration path. ROS2/Gazebo assets
-remain optional experimental extensions. Network indicators are simulated at the
-application level; the platform does not yet capture live network traffic.
+## Technology stack
+
+| Area | Technologies |
+|---|---|
+| Backend API | Python, FastAPI |
+| Frontend | React |
+| Messaging | MQTT, Eclipse Mosquitto |
+| Machine learning | Python, Isolation Forest |
+| Security monitoring | SIEM event processing and correlation |
+| Persistence | SQLite, JSONL |
+| Deployment | Docker, Docker Compose |
+| API communication | REST, WebSocket |
 
 ## Run locally
 
+### Prerequisites
+
+- Python 3.10+
+- Node.js and npm
+- Docker Engine and Docker Compose (recommended for the integrated demo)
+
+### Start with Docker Compose
+
+1. Clone the repository and enter its directory:
+
+   ```bash
+   git clone https://github.com/abdessamadzallafi/cyber-digital-twin-pfa-vC.git
+   cd cyber-digital-twin-pfa-vC
+   ```
+
+2. Create the local environment file:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+3. Review `.env` and replace all example values and secrets. Do not commit this file.
+
+4. Build and start the services:
+
+   ```bash
+   docker compose up --build
+   ```
+
+5. Open the dashboard and API documentation:
+
+   - Dashboard: http://localhost:3000
+   - FastAPI documentation: http://localhost:8000/docs
+
+The Compose configuration is intended for local demonstration and development. Review the broker, authentication, network exposure, secrets, and TLS configuration before any shared or production deployment.
+
+### Run backend and dashboard separately
+
+For manual setup, install the Python dependencies from the repository's dependency files, configure the environment using `.env.example`, and start the backend using the entry point and instructions defined by the current project configuration. Start the React application from the `dashboard/` directory using its npm scripts.
+
+## Testing and validation
+
+Run the test suite from the project root using the project's configured Python environment:
+
 ```bash
-git clone <repository-url>
-cd cyber-digital-twin-pfa-vC
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-# edit .env and replace every placeholder, then load it for a local run
-set -a; source .env; set +a
-uvicorn backend.main:app --host 0.0.0.0 --port 8000
+python -m pytest -q
 ```
 
-Start Mosquitto on port `1883`, then start the React dashboard with
-`cd dashboard && npm start`. Edge simulators in `simulation/` (including
-`drone_sim.py`) are optional demo inputs. `simulation/data_lake_seed.py` can
-preload local demonstration evidence.
+Test results depend on the local environment, installed dependencies, configuration, and available services. No model accuracy, precision, recall, or F1 score is claimed here; those metrics should only be published after a reproducible evaluation on a documented test dataset.
 
-The public readiness endpoint is `GET /health`; the detailed platform view is
-`GET /api/v1/platform/health`. API documentation is available at `/docs` and
-`/openapi.json`.
+## Security and deployment considerations
 
-### Docker demo stack
+This is a development and demonstration prototype. Before exposing it beyond a controlled local environment:
 
-The self-contained development stack starts the MQTT broker, API and dashboard:
+- Enable authenticated MQTT access and TLS.
+- Use strong, unique secrets and secure JWT configuration.
+- Restrict network exposure and apply least-privilege access.
+- Review API authorization, input validation, logging, and error handling.
+- Configure persistent storage, backups, and database migration procedures.
+- Run dependency, container, and application security checks.
+- Validate the anomaly-detection model on representative data and document false-positive/false-negative behavior.
 
-```bash
-docker compose up --build
-```
+## Current limitations
 
-Before the first Docker launch, copy `.env.example` to `.env` and replace its
-placeholders. The backend consumes this file through Compose; it is ignored by
-Git and must never be committed.
+- Device telemetry and security scenarios are simulated.
+- Network threat indicators are based on application-level events; this does not imply live packet capture or a full network IDS.
+- ML results depend on the training data and thresholds; formal performance metrics are not stated without a reproducible evaluation.
+- Simulated response missions are demonstrations, not control of physical equipment.
+- Production deployment requires additional security hardening, operational testing, and infrastructure-specific integration.
 
-Open the dashboard at `http://localhost:3000` and the API documentation at
-`http://localhost:8000/docs`. The compose profile is intentionally a local demo
-profile: anonymous MQTT is allowed only inside this isolated environment. Do not
-deploy it as-is; enable credentials and TLS first.
+## Roadmap
 
-### Regression tests
+- Stabilize backend, dashboard, MQTT ingestion, and persistence.
+- Consolidate database configuration and migration workflows.
+- Expand automated regression and integration tests.
+- Improve observability, auditability, and security hardening.
+- Evaluate anomaly detection with documented datasets and metrics.
+- Prepare reproducible deployment and demonstration documentation.
 
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m pytest -q
-```
+## Project status
 
-`pytest` is constrained to the ROS2 Humble-compatible 7.x series, so its
-system `launch_testing` plugin can load normally. This preserves ROS2 while
-making the command reproducible without disabling plugin autoloading.
+SecurIoT-Port is under active stabilization and refinement. Features and setup instructions may evolve as the implementation is consolidated.
 
-Existing API paths (such as `/statistics`, `/ws`, `/simulate/*`, `/missions`) are
-unchanged. The additive industrial API provides:
+## Author
 
-- `GET /api/v1/platform/health` — platform/layer readiness.
-- `GET /api/v1/edge/devices` — safe edge asset inventory.
-
-## Configuration
-
-The defaults preserve local operation. Deployment values are environment driven:
-`SMART_PORT_MQTT_HOST`, `SMART_PORT_MQTT_PORT`, `SMART_PORT_DATABASE_URL`,
-`SMART_PORT_DATA_LAKE_PATH`, `SMART_PORT_API_HOST`, `SMART_PORT_API_PORT`,
-`SMART_PORT_UDP_HOST`, and `SMART_PORT_UDP_PORT`.
-
-Use a PostgreSQL SQLAlchemy URL in `SMART_PORT_DATABASE_URL` for production (and
-install the matching database driver). ROS2/Gazebo is optional and experimental;
-the MQTT drone simulator remains the operational local demonstration path.
+**Abdessamad ZALLAFI**
