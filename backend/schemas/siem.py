@@ -7,7 +7,7 @@ from backend.siem.contracts import SOURCES, SeverityLevel
 
 
 class SiemEventIn(BaseModel):
-    source: str = Field(description="mqtt, http, drone, ros2, auth, sensor, or network")
+    source: str = Field(description="mqtt, http, udp, auth, sensor, or network")
     event_type: str = Field(min_length=1, max_length=100)
     message: str = Field(min_length=1, max_length=4000)
     severity: SeverityLevel = SeverityLevel.INFO
@@ -42,6 +42,7 @@ class RiskScoreOut(BaseModel):
     level: str
     window_minutes: int
     event_count: int
+    signal_count: int = 0
 
 
 class ReportRequest(BaseModel):

@@ -1,5 +1,4 @@
 from backend.ml.anomaly_detector import is_anomaly
-from backend.ml.network_anomaly import is_network_anomaly
 from backend.ml.prediction_service import prediction_service
 from backend.security.engine import check_security
 from backend.logger import logger
@@ -59,33 +58,25 @@ def make_decision(data, net_info):
         predictions = []
     advanced_anomalies = [item for item in predictions if item.anomalous]
     for item in advanced_anomalies:
-        alerts.append(("ml_anomaly", f"AI anomaly: {item.domain} (score={item.score:.2f})"))
+        # flood_attack is an early behavioral ML signal. Deterministic
+        # flood/network_flood rules remain responsible for confirmed
+        # network-security escalation.
+        alert_type = "ml_signal" if item.domain == "flood_attack" else "ml_anomaly"
+        alerts.append((alert_type, f"AI anomaly: {item.domain} (score={item.score:.2f})"))
         raw_score = max(raw_score, item.score)
-        threat_level = "red"
+        if alert_type == "ml_anomaly":
+            threat_level = "red"
 
-    # 5. Legacy network model remains a compatibility signal.
-    try:
-        net_ml_anomaly = is_network_anomaly(device_id, net_info)
-    except (TypeError, ValueError, KeyError):
-        logger.exception("Network ML inference rejected device=%s", device_id)
-        net_ml_anomaly = False
-    if net_ml_anomaly:
-        alerts.append(("ml_anomaly", "Anomalie réseau détectée"))
-        threat_level = "red"
-        raw_score = max(raw_score, 0.8)
-
-    # 6. Platform decision: detection and correlation only.
-    # Operational drone dispatch is intentionally outside SecurIoT-Port.
-    any_anomaly = ml_anomaly or net_ml_anomaly or bool(advanced_anomalies)
+    # 5. Platform decision: deterministic security rules and advanced ML.
+    # The legacy network model is retained on disk for rollback/traceability
+    # but is no longer an active third network detector.
+    any_anomaly = ml_anomaly or bool(advanced_anomalies)
     correlation = correlate(alerts, raw_score if any_anomaly else 0.0)
     return {
         "device_id": device_id,
         "anomaly": any_anomaly,
         "anomaly_score": raw_score if any_anomaly else 0.0,
         "threat_level": "red" if correlation["severity"] in {"high", "critical"} else threat_level,
-        # Kept for API/caller compatibility; no operational mission is created.
-        "dispatch_recommended": False,
-        "create_mission": False,
         "alerts": alerts,
         "ai_predictions": [{"domain": item.domain, "anomalous": item.anomalous, "score": item.score} for item in predictions]
     }

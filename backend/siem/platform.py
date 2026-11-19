@@ -1,6 +1,6 @@
 """SIEM orchestration service: collect -> correlate -> alert -> incident -> risk."""
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
 from backend.database.models import Incident, SiemEvent
@@ -46,13 +46,64 @@ class SmartPortSiem:
         return self.db.query(SiemEvent).order_by(SiemEvent.occurred_at.desc()).limit(limit).all()
 
     def open_incidents(self):
-        return self.db.query(Incident).filter(Incident.status != "resolved").order_by(Incident.created_at.desc()).all()
+        self.collapse_duplicate_open_incidents()
+        return (
+            self.db.query(Incident)
+            .filter(Incident.status != "resolved")
+            .order_by(Incident.last_seen.desc())
+            .all()
+        )
+
+    def collapse_duplicate_open_incidents(self) -> int:
+        """Keep one open incident per (device_id, anomaly_type); resolve older clones.
+
+        Historical ActionDispatcher windowing left many open duplicates that
+        inflated supervision KPIs. Also auto-resolves stale open incidents that
+        have not been refreshed for 24h so the dashboard reflects live threats.
+        """
+        now = datetime.utcnow()
+        stale_before = now - timedelta(hours=24)
+        resolved = 0
+
+        stale_rows = (
+            self.db.query(Incident)
+            .filter(Incident.status != "resolved")
+            .filter(Incident.last_seen < stale_before)
+            .all()
+        )
+        for incident in stale_rows:
+            incident.status = "resolved"
+            incident.resolved_at = now
+            resolved += 1
+
+        open_rows = (
+            self.db.query(Incident)
+            .filter(Incident.status != "resolved")
+            .order_by(Incident.last_seen.desc(), Incident.id.desc())
+            .all()
+        )
+        seen: set[tuple[str, str]] = set()
+        for incident in open_rows:
+            key = (incident.device_id or "platform", incident.anomaly_type or "")
+            if key in seen:
+                incident.status = "resolved"
+                incident.resolved_at = now
+                resolved += 1
+            else:
+                seen.add(key)
+        if resolved:
+            self.db.commit()
+        return resolved
 
     def resolve_incident(self, incident_id: int):
         result = self.incidents.resolve(self.db, incident_id)
         if result:
             self.db.commit()
         return result
+
+    def count_open_incidents(self) -> int:
+        self.collapse_duplicate_open_incidents()
+        return self.db.query(Incident).filter(Incident.status != "resolved").count()
 
     def report(self, window_minutes: int) -> str:
         return SiemReportService().generate(self.db, window_minutes)

@@ -55,14 +55,6 @@ class Settings:
     environment: str = os.getenv("SMART_PORT_ENV", "development")
 
     # ------------------------------------------------------------------
-    # Drone runtime
-    # ------------------------------------------------------------------
-    drone_id: str = os.getenv("SMART_PORT_DRONE_ID", "drone_01")
-    drone_token: str = os.getenv("SMART_PORT_DRONE_TOKEN", "")
-    drone_telemetry_interval: float = float(os.getenv("SMART_PORT_DRONE_TELEMETRY_INTERVAL", "2"))
-    drone_mission_cooldown_seconds: int = int(os.getenv("SMART_PORT_DRONE_MISSION_COOLDOWN_SECONDS", "60"))
-
-    # ------------------------------------------------------------------
     # Incident / correlation
     # ------------------------------------------------------------------
     incident_dedup_window_seconds: int = int(os.getenv("SMART_PORT_INCIDENT_DEDUP_WINDOW_SECONDS", "300"))
@@ -82,7 +74,6 @@ class Settings:
             "SMART_PORT_JWT_SECRET": self.jwt_secret,
             "SMART_PORT_DEMO_ADMIN_PASSWORD": self.demo_admin_password,
             "SMART_PORT_DEMO_OPERATOR_PASSWORD": self.demo_operator_password,
-            "SMART_PORT_DRONE_TOKEN": self.drone_token,
         }.items() if not value]
         if missing:
             raise RuntimeError(f"Missing required runtime configuration: {', '.join(missing)}")

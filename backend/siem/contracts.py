@@ -19,4 +19,4 @@ SEVERITY_POINTS = {
 }
 
 
-SOURCES = {"mqtt", "http", "udp", "drone", "ros2", "auth", "sensor", "network"}
+SOURCES = {"mqtt", "http", "udp", "auth", "sensor", "network"}

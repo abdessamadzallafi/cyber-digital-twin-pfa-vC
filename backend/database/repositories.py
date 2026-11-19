@@ -12,5 +12,14 @@ class TelemetryRepository:
         return (self.db.query(SensorReading).filter(SensorReading.device_id == device_id)
                 .order_by(SensorReading.received_at.desc()).limit(min(limit, 1000)).all())
 
+    def recent_readings_for_ids(self, device_ids, limit: int = 100):
+        return (
+            self.db.query(SensorReading)
+            .filter(SensorReading.device_id.in_(list(device_ids)))
+            .order_by(SensorReading.received_at.desc())
+            .limit(min(limit, 1000))
+            .all()
+        )
+
     def recent_alerts(self, limit: int = 100):
         return self.db.query(Alert).order_by(Alert.created_at.desc()).limit(min(limit, 1000)).all()

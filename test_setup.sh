@@ -133,8 +133,8 @@ try:
     print(f"\n  ✓ Known devices (including legacy): {len(all_devices)}")
     
     # Test validation
-    drone = DEVICE_REGISTRY["drone_01"]
-    alerts = validate_identity("drone_01", drone.token, "drone/telemetry")
+    drone = DEVICE_REGISTRY["grue_G01"]
+    alerts = validate_identity("grue_G01", drone.token, "port/gantry_crane/temperature")
     print(f"\n  ✓ Token validation working")
     if alerts:
         print(f"    Alerts: {alerts}")

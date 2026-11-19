@@ -28,12 +28,10 @@ from backend.schemas.platform import TelemetryIn
 from backend.services.platform_service import PlatformService
 from smart_port.communication.udp_telemetry import start_udp_telemetry
 from smart_port.config import settings as platform_settings
-from backend.events.normalizer import EventNormalizer
-from backend.events.contracts import Transport as EventTransport
 from smart_port.data.data_lake import lake_summary
 
 connected_websockets = set()
-update_queue = asyncio.Queue(maxsize=settings.websocket_queue_size)
+update_queue: asyncio.Queue | None = None
 loop = None
 udp_transport = None
 mqtt_thread = None
@@ -42,11 +40,6 @@ broadcast_task = None
 
 async def ingest_udp_payload(payload: dict) -> None:
     """UDP gateway -> canonical HTTP/service ingestion boundary."""
-    # --- Additive CommonEvent envelope ---------------------------------------
-    # Built from the original raw UDP dict BEFORE TelemetryIn(**payload) strips
-    # unknown fields (e.g. latitude, longitude, bool status, port_src, …).
-    # All existing consumers are completely unchanged.
-    _udp_common_event = EventNormalizer.normalize(payload, EventTransport.UDP)
     # --- Existing pipeline (unchanged) ---------------------------------------
     db = SessionLocal()
     try:
@@ -84,13 +77,14 @@ async def lifespan(_app: FastAPI):
     available.  Model loading has the same property; the ML layer exposes its
     documented rules-based fallback when no valid model is present.
     """
-    global loop, udp_transport, mqtt_thread, broadcast_task
+    global loop, udp_transport, mqtt_thread, broadcast_task, update_queue
     settings.validate_for_runtime()
     
     verify_schema(db_engine)
     logger.info("Existing database schema verified")
     
     loop = asyncio.get_running_loop()
+    update_queue = asyncio.Queue(maxsize=settings.websocket_queue_size)
     try:
         load_models()
         load_prediction_models()
@@ -283,18 +277,36 @@ def platform_healthcheck():
 
 @app.get("/health/{device_id}")
 def get_device_health(device_id: str):
+    from datetime import datetime, timedelta
+
     db = SessionLocal()
-    total = db.query(SensorReading).filter(SensorReading.device_id == device_id).count()
+    now = datetime.utcnow()
+    fresh_since = now - timedelta(minutes=30)
+    window_since = now - timedelta(hours=24)
+    fresh = db.query(SensorReading).filter(
+        SensorReading.device_id == device_id,
+        SensorReading.received_at >= fresh_since,
+    ).count()
+    if fresh == 0:
+        any_recent = db.query(SensorReading).filter(
+            SensorReading.device_id == device_id,
+            SensorReading.received_at >= window_since,
+        ).count()
+        db.close()
+        return {
+            "device_id": device_id,
+            "health_score": None,
+            "status": "stale" if any_recent else "unknown",
+        }
     anomalies = db.query(Alert).filter(
         Alert.device_id == device_id,
-        Alert.alert_type == "ml_anomaly"
+        Alert.alert_type == "ml_anomaly",
+        Alert.created_at >= fresh_since,
     ).count()
     db.close()
-    if total == 0:
-        return {"device_id": device_id, "health_score": 100}
-    ratio = anomalies / total
+    ratio = anomalies / fresh
     score = max(0, 100 - int(ratio * 200))
-    return {"device_id": device_id, "health_score": score}
+    return {"device_id": device_id, "health_score": score, "status": "ok"}
 
 @app.get("/risk")
 def get_risk_score():
@@ -393,5 +405,3 @@ def simulate_impossible(current_user: dict = Depends(get_current_user)):
         "timestamp": time.time()
     })
     return {"status": "Valeur impossible envoyée"}
-
-# ---------- MISSION MANUELLE (protégée) ----------

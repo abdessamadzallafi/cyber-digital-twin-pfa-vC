@@ -3,15 +3,19 @@ from __future__ import annotations
 
 import glob
 
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.core.config import settings
 from backend.main import app
 
-client = TestClient(app)
+@pytest.fixture
+def client():
+    with TestClient(app) as client:
+        yield client
 
 
-def test_post_siem_reports_returns_200_with_filename():
+def test_post_siem_reports_returns_200_with_filename(client):
     r = client.post("/token", data={"username": "admin", "password": settings.demo_admin_password})
     assert r.status_code == 200
     headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
@@ -24,7 +28,7 @@ def test_post_siem_reports_returns_200_with_filename():
     assert body["filename"].endswith(".pdf")
 
 
-def test_post_siem_reports_creates_pdf_file():
+def test_post_siem_reports_creates_pdf_file(client):
     r = client.post("/token", data={"username": "admin", "password": settings.demo_admin_password})
     assert r.status_code == 200
     headers = {"Authorization": f"Bearer {r.json()['access_token']}"}

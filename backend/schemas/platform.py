@@ -7,6 +7,9 @@ class TelemetryIn(BaseModel):
     device_id: str = Field(min_length=1, max_length=128)
     type: str = Field(min_length=1, max_length=64)
     value: Optional[float] = None
+    # Units are supplied by physical sensors (for example °C, %, g and ppm).
+    # Keep this optional so legacy payloads without a unit remain valid.
+    unit: Optional[str] = Field(default=None, max_length=32)
     # status accepts bool (presence/barrier) or str — never cast between types.
     # Fix B1/P3: Pydantic v2 previously rejected status=True for Optional[str].
     status: Optional[Union[bool, str]] = None
@@ -29,6 +32,10 @@ class DeviceOut(BaseModel):
     type: str
     zone: str
     topic: str
+    online: bool = False
+    status: str = "unknown"
+    last_seen: Optional[str] = None
+    last_value: Optional[Any] = None
 
 
 class AlertOut(BaseModel):

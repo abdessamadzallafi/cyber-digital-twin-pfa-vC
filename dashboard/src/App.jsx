@@ -3,7 +3,6 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import './App.css';
 import {
   getDroneFreshness,
-  mergeDroneRest,
   mergeDroneTelemetry,
   nextWebSocketStatus,
   shouldReconnect,
@@ -40,8 +39,19 @@ const NAVIGATION = [
 ];
 
 const asArray = value => Array.isArray(value) ? value : [];
-const statusOf = value => value == null ? 'unavailable' : value === 'red' ? 'critical' : value === 'yellow' ? 'warning' : 'healthy';
-const labelStatus = value => value == null ? 'Indisponible' : value === 'red' ? 'Critique' : value === 'yellow' ? 'À surveiller' : 'Opérationnel';
+const statusOf = value => {
+  if (value == null || value === 'offline' || value === 'unknown' || value === 'stale') return 'unavailable';
+  if (value === 'red' || value === 'critical') return 'critical';
+  if (value === 'yellow' || value === 'warning') return 'warning';
+  return 'healthy';
+};
+const labelStatus = value => {
+  if (value == null || value === 'offline' || value === 'unknown') return 'Hors ligne';
+  if (value === 'stale') return 'Inactif';
+  if (value === 'red' || value === 'critical') return 'Critique';
+  if (value === 'yellow' || value === 'warning') return 'À surveiller';
+  return 'Opérationnel';
+};
 const number = value => Number(value).toLocaleString('fr-FR');
 const displayValue = (value, formatter = value => value) => value == null ? 'N/A' : formatter(value);
 const hasPosition = position => position && [position.x, position.y, position.altitude].every(value => typeof value === 'number');
@@ -98,8 +108,8 @@ function App() {
         return { ok: false, data: null };
       }
     };
-    const [nextStats, nextRisk, nextDevices, nextIncidents, nextMissions, nextTimeline, nextDrone, nextLake] = await Promise.all([
-      get('/statistics'), get('/risk'), get('/devices'), get('/incidents'), get('/missions'), get('/timeline'), get('/drone/status'), get('/api/v1/datalake')
+    const [nextStats, nextRisk, nextDevices, nextIncidents, nextMissions, nextTimeline, nextLake] = await Promise.all([
+      get('/api/v1/ops/statistics'), get('/api/v1/siem/risk'), get('/api/v1/devices'), get('/api/v1/siem/incidents'), get('/api/v1/ops/missions'), get('/api/v1/ops/siem/timeline'), get('/api/v1/datalake')
     ]);
     if (nextStats.ok && nextStats.data) {
       setStats(nextStats.data);
@@ -108,12 +118,32 @@ function App() {
       setStats(null);
       setStatsState('error');
     }
+
     setRisk(nextRisk.ok ? nextRisk.data : null);
+
     if (nextDevices.ok && Array.isArray(nextDevices.data)) {
       setDeviceList(nextDevices.data);
       setDeviceState('ready');
+
+      // Seed live device state from API online status so the KPI/map do not
+      // depend solely on WebSocket messages that may not have arrived yet.
+      setDevices(previous => {
+        const next = { ...previous };
+        nextDevices.data.forEach(device => {
+          if (!device.online && !next[device.device_id]) return;
+          next[device.device_id] = {
+            ...next[device.device_id],
+            device_id: device.device_id,
+            status: next[device.device_id]?.status || (device.online ? 'green' : 'offline'),
+            last_value: device.last_value ?? next[device.device_id]?.last_value,
+            online: Boolean(device.online),
+          };
+        });
+        return next;
+      });
+
       const healthResults = await Promise.all(nextDevices.data.map(async device => {
-        const result = await get(`/health/${device.device_id}`);
+        const result = await get(`/api/v1/devices/${device.device_id}/health`);
         return [device.device_id, result.ok ? result.data?.health_score : null];
       }));
       setHealth(Object.fromEntries(healthResults));
@@ -122,16 +152,42 @@ function App() {
       setDeviceState('error');
       setHealth({});
     }
-    if (nextIncidents.ok && Array.isArray(nextIncidents.data)) setIncidents(nextIncidents.data);
-    if (nextMissions.ok && Array.isArray(nextMissions.data)) setMissions(nextMissions.data);
-    if (nextTimeline.ok && Array.isArray(nextTimeline.data)) setTimeline(nextTimeline.data);
-    if (nextDrone.ok && nextDrone.data) {
-      setDrone(previous => mergeDroneRest(previous, nextDrone.data));
+
+    if (nextIncidents.ok && Array.isArray(nextIncidents.data)) {
+      setIncidents(nextIncidents.data);
+    }
+
+    if (nextMissions.ok && Array.isArray(nextMissions.data)) {
+      setMissions(nextMissions.data);
+
+      // A successful missions refresh means the drone subsystem is reachable,
+      // even when no live drone telemetry is currently available.
       setDroneState('ready');
     } else {
       setDroneState('error');
     }
-    if (nextLake.ok && nextLake.data) setLake(nextLake.data);
+
+    if (nextTimeline.ok && Array.isArray(nextTimeline.data)) {
+      setTimeline(nextTimeline.data);
+
+      // Seed the event panel from persisted SIEM activity.
+      // WebSocket messages will be prepended afterwards for live updates.
+      setEvents(previous => {
+        const live = previous.filter(event => event.live === true);
+        const persisted = nextTimeline.data.slice(0, 30).map(event => ({
+          ...event,
+          time: event.occurred_at
+            ? new Date(event.occurred_at).toLocaleTimeString('fr-FR')
+            : '—',
+          live: false,
+        }));
+        return [...live, ...persisted].slice(0, 30);
+      });
+    }
+
+    if (nextLake.ok && nextLake.data) {
+      setLake(nextLake.data);
+    }
   }, [authFetch, token]);
 
   useEffect(() => {
@@ -180,7 +236,10 @@ function App() {
           }
           if (update.device_id) {
             setDevices(previous => ({ ...previous, [update.device_id]: { ...previous[update.device_id], ...update } }));
-            setEvents(previous => [{ ...update, time: new Date().toLocaleTimeString('fr-FR') }, ...previous].slice(0, 30));
+            setEvents(previous => [
+              { ...update, time: new Date().toLocaleTimeString('fr-FR'), live: true },
+              ...previous,
+            ].slice(0, 30));
           }
         } catch {
           // Ignore malformed broadcast payloads without breaking the socket lifecycle.
@@ -231,11 +290,20 @@ function App() {
 
   const logout = () => { localStorage.removeItem('token'); setToken(''); };
   const launch = path => authFetch(path, { method: 'POST' }).then(refresh).catch(console.error);
-  const openHistory = id => authFetch(`/measures/${id}?limit=24`).then(r => r.json()).then(data => {
+  const openHistory = id => authFetch(`/api/v1/devices/${id}/telemetry?limit=24`).then(r => r.json()).then(data => {
     setHistory(asArray(data).map(row => ({ time: new Date(row.timestamp * 1000).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }), value: row.value ?? row.people_count ?? 0 })).reverse());
     setSelectedDevice(id);
   }).catch(console.error);
-  const report = id => authFetch(`/report/${id}?anomaly_type=ml_anomaly`, { method: 'POST' }).then(r => r.json()).then(data => window.alert(`Rapport créé : ${data.filename}`));
+  const report = () => authFetch('/api/v1/siem/reports', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ window_minutes: 1440 }),
+  }).then(async response => {
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'Échec de génération du rapport.');
+    window.alert(`Rapport créé : ${data.filename}`);
+    return data;
+  }).catch(error => window.alert(error.message || 'Échec de génération du rapport.'));
 
   if (!token) return (
     <main className="login-page">
@@ -310,30 +378,61 @@ function App() {
           <div className="topbar-actions">
             <span className={`live-pill ${wsStatus.toLowerCase()}`}><i /> {wsStatus === 'AUTH_ERROR' ? 'Session expirée' : `WS ${wsStatus}`}</span>
             <span className="date">{now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}<b>{now.toLocaleTimeString('fr-FR')}</b></span>
-            <button className="icon-button" aria-label="Notifications">♧<em>{stats?.total_alerts ?? ''}</em></button>
+            <button className="icon-button" aria-label="Notifications">♧<em>{stats?.total_alerts ?? stats?.alerts ?? ''}</em></button>
           </div>
         </header>
-        {tab === 'overview' && <Overview stats={stats} statsState={statsState} risk={risk} deviceList={deviceList} deviceState={deviceState} devices={devices} health={health} drone={drone} droneState={droneState} droneFreshness={droneFreshness} events={activeEvents} incidents={incidents} onDevice={openHistory} onAttack={launch} onMission={() => launch('/force_mission/entrepot_E01')} />}
+        {tab === 'overview' && <Overview stats={stats} statsState={statsState} risk={risk} deviceList={deviceList} deviceState={deviceState} devices={devices} health={health} drone={drone} droneState={droneState} droneFreshness={droneFreshness} events={activeEvents} incidents={incidents} onDevice={openHistory} onAttack={launch} />}
         {tab === 'devices' && <Devices deviceList={deviceList} deviceState={deviceState} devices={devices} health={health} onDevice={openHistory} />}
         {tab === 'security' && <Security stats={stats} risk={risk} events={activeEvents} onAttack={launch} />}
-        {tab === 'missions' && <Missions missions={missions} drone={drone} droneFreshness={droneFreshness} onMission={() => launch('/force_mission/entrepot_E01')} />}
+        {tab === 'missions' && <Missions missions={missions} drone={drone} droneFreshness={droneFreshness} />}
         {tab === 'incidents' && <Incidents incidents={incidents} />}
         {tab === 'timeline' && <Timeline timeline={timeline} />}
         {tab === 'datalake' && <DataLake lake={lake} />}
-        {tab === 'reports' && <Reports onReport={() => selectedDevice ? report(selectedDevice) : openHistory('entrepot_E01')} />}
+        {tab === 'reports' && <Reports onReport={report} />}
       </main>
       {selectedDevice && <History device={selectedDevice} history={history} close={() => setSelectedDevice(null)} report={report} />}
     </div>
   );
 }
 
-function Overview({ stats, statsState, risk, deviceList, deviceState, devices, health, drone, droneState, droneFreshness, events, incidents, onDevice, onAttack, onMission }) {
+function Overview({ stats, statsState, risk, deviceList, deviceState, devices, health, drone, droneState, droneFreshness, events, incidents, onDevice, onAttack }) {
   const robot = drone;
+  const registeredDevices = stats?.devices_registered ?? (Array.isArray(deviceList) ? deviceList.length : null);
+  const activeDevices = stats?.devices ?? (
+    Array.isArray(deviceList)
+      ? deviceList.filter(device => device.online || devices[device.device_id]?.online).length
+      : null
+  );
+
   const cards = [
-    ['Équipements connectés', stats ? displayValue(stats.active_devices, number) : statsState === 'loading' ? 'Chargement…' : 'Indisponible', stats ? `${displayValue(stats.total_devices, number)} enregistrés` : 'Donnée indisponible', 'teal'],
-    ['Alertes actives', stats ? displayValue(stats.total_alerts, number) : statsState === 'loading' ? 'Chargement…' : 'Indisponible', 'À traiter', 'amber'],
-    ['Événements de sécurité', stats ? displayValue(stats.attacks, number) : statsState === 'loading' ? 'Chargement…' : 'Indisponible', 'Sécurité réseau', 'red'],
-    ['Niveau de risque', risk ? displayValue(risk.risk_score, value => `${Number(value).toFixed(0)}%`) : 'N/A', risk?.level || 'Niveau indisponible', 'purple']
+    [
+      'Équipements connectés',
+      activeDevices !== null && statsState !== 'loading'
+        ? displayValue(activeDevices, number)
+        : statsState === 'loading' || deviceState === 'loading' ? 'Chargement…' : 'Indisponible',
+      registeredDevices !== null
+        ? `${displayValue(registeredDevices, number)} enregistrés`
+        : 'Donnée indisponible',
+      'teal'
+    ],
+    [
+      'Alertes récentes',
+      stats ? displayValue(stats.alerts, number) : statsState === 'loading' ? 'Chargement…' : 'Indisponible',
+      '5 dernières minutes',
+      'amber'
+    ],
+    [
+      'Événements de sécurité',
+      stats ? displayValue(stats.incidents_open, number) : statsState === 'loading' ? 'Chargement…' : 'Indisponible',
+      'Incidents ouverts',
+      'red'
+    ],
+    [
+      'Niveau de risque',
+      risk ? displayValue(risk.score, value => `${Number(value).toFixed(0)}%`) : 'N/A',
+      risk?.level || 'Niveau indisponible',
+      'purple'
+    ]
   ];
   return (
     <>
@@ -364,15 +463,16 @@ function Overview({ stats, statsState, risk, deviceList, deviceState, devices, h
               const id = device.device_id;
               const [left, top] = MAP_POSITIONS[id];
               const data = devices[id] || {};
+              const liveStatus = data.status || (device.online ? 'green' : 'offline');
               return (
-                <button key={id} className={`map-node ${statusOf(data.status)}`} style={{left:`${left}%`,top:`${top}%`,zIndex:2}} onClick={() => onDevice(id)}>
+                <button key={id} className={`map-node ${statusOf(liveStatus)}`} style={{left:`${left}%`,top:`${top}%`,zIndex:2}} onClick={() => onDevice(id)}>
                   <b>{DEVICE_TYPES[id]}</b>
                   <span>{DEVICE_LABELS[id]}</span>
                   <i />
                 </button>
               );
             })}
-            {robot.telemetry_received && hasPosition(robot.position) && <div className={`robot-pin ${robot.status && robot.status !== 'idle' ? 'moving' : ''}`} style={{left:`${robot.position.x}%`,top:`${robot.position.y}%`,zIndex:3}}>✦<span>DRONE-01</span></div>}
+            {droneFreshness === 'LIVE' && robot.telemetry_received && hasPosition(robot.position) && <div className={`robot-pin ${robot.status && robot.status !== 'idle' ? 'moving' : ''}`} style={{left:`${robot.position.x}%`,top:`${robot.position.y}%`,zIndex:3}}>✦<span>DRONE-01</span></div>}
             <div className="map-key" style={{zIndex:3}}>
               <span><i className="dot healthy"/> Opérationnel</span>
               <span><i className="dot warning"/> Attention</span>
@@ -400,18 +500,23 @@ function Overview({ stats, statsState, risk, deviceList, deviceState, devices, h
       <section className="bottom-grid">
         <article className="panel fleet-panel">
           <div className="panel-heading">
-            <div><p className="eyebrow">INSPECTION AUTONOME</p><h2>Drone d’inspection</h2></div>
-            <span className={`status-chip ${droneFreshness === 'LIVE' ? 'healthy' : droneFreshness === 'STALE' ? 'warning' : 'unavailable'}`}>{droneFreshness === 'LIVE' ? 'LIVE' : droneFreshness === 'STALE' ? 'STALE' : droneFreshness === 'DISCONNECTED' ? 'DISCONNECTED' : droneState === 'loading' ? 'Chargement…' : 'UNKNOWN'}</span>
+            <div>
+              <p className="eyebrow">PERSPECTIVE D’EXTENSION</p>
+              <h2>Inspection portuaire par drone</h2>
+            </div>
+            <span className="status-chip warning">CONCEPT</span>
           </div>
           <div className="robot-content">
             <div className="robot-avatar">✦</div>
             <div>
-              <b>DRONE-01</b>
-              <p>{robot.mission_id ? `Mission ${robot.mission_id}` : 'Aucune mission assignée'}</p>
-              <div className="battery"><span style={{ width: `${typeof robot.battery === 'number' ? robot.battery : 0}%` }} /></div>
-              <small>Batterie {robot.telemetry_received ? displayValue(robot.battery, value => `${value}%`) : 'N/A'} · {robot.telemetry_received && hasPosition(robot.position) ? `Position ${robot.position.x}, ${robot.position.y}` : 'Position indisponible'}</small>
+              <b>SCÉNARIO D’INSPECTION</b>
+              <p>Un drone pourrait assister les équipes dans la surveillance aérienne des zones portuaires.</p>
+              <small>
+                Cas d’usage : inspection des zones de stockage, surveillance des équipements
+                et assistance à l’évaluation des incidents.
+              </small>
+              <p><small>Concept uniquement — aucune connexion à un drone réel ou simulé dans la plateforme.</small></p>
             </div>
-            <button className="secondary-button" onClick={onMission}>Déployer</button>
           </div>
         </article>
         <article className="panel action-panel">
@@ -433,7 +538,7 @@ function Devices({ deviceList, deviceState, devices, health, onDevice }) {
     <section className="panel table-panel">
       <div className="panel-heading">
         <div><p className="eyebrow">INVENTAIRE IOT</p><h2>Équipements du terminal</h2></div>
-        <span className="count-chip">{deviceState === 'ready' ? `${list.length} disponibles` : deviceState === 'loading' ? 'Chargement…' : 'Indisponible'}</span>
+        <span className="count-chip">{deviceState === 'ready' ? `${list.filter(d => d.online).length}/${list.length} en ligne` : deviceState === 'loading' ? 'Chargement…' : 'Indisponible'}</span>
       </div>
       <div className="device-table">
         <div className="table-head"><span>Équipement</span><span>Zone</span><span>Dernière mesure</span><span>Santé</span><span>État</span></div>
@@ -442,7 +547,7 @@ function Devices({ deviceList, deviceState, devices, health, onDevice }) {
         {deviceState === 'ready' && list.length === 0 && <p className="empty">Aucun équipement disponible.</p>}
         {list.map(device => {
           const live = devices[device.device_id] || {};
-          const condition = live.status ?? device.status;
+          const condition = live.status ?? (device.online ? 'green' : device.status);
           const healthScore = health[device.device_id] ?? device.health_score;
           return (
             <button className="table-row" key={device.device_id} onClick={() => onDevice(device.device_id)}>
@@ -450,7 +555,7 @@ function Devices({ deviceList, deviceState, devices, health, onDevice }) {
               <span>{device.zone || 'N/A'}</span>
               <span>{live.last_value ?? device.last_value ?? '—'}</span>
               <span>{typeof healthScore === 'number' ? <i className="health-bar"><b style={{ width: `${healthScore}%` }} /></i> : null}{displayValue(healthScore, value => `${value}%`)}</span>
-              <span className={`status-chip ${statusOf(condition)}`}>{labelStatus(condition)}</span>
+              <span className={`status-chip ${statusOf(condition)}`}>{device.online || live.online ? labelStatus(condition) : 'Hors ligne'}</span>
             </button>
           );
         })}
@@ -460,14 +565,14 @@ function Devices({ deviceList, deviceState, devices, health, onDevice }) {
 }
 
 function Security({ stats, risk, events, onAttack }) {
-  const attackCount = stats ? displayValue(stats.attacks, number) : 'Indisponible';
-  const alertCount = stats ? displayValue(stats.total_alerts, number) : 'Indisponible';
-  const riskValue = risk ? displayValue(risk.risk_score, value => `${Number(value).toFixed(0)}%`) : 'N/A';
+  const attackCount = stats ? displayValue(stats.incidents_open, number) : 'Indisponible';
+  const alertCount = stats ? displayValue(stats.alerts, number) : 'Indisponible';
+  const riskValue = risk ? displayValue(risk.score, value => `${Number(value).toFixed(0)}%`) : 'N/A';
   return (
     <>
       <section className="stat-grid security-metrics">
-        <article className="metric red"><span>Incidents détectés</span><strong>{attackCount}</strong><small>Source : backend</small></article>
-        <article className="metric amber"><span>Alertes ouvertes</span><strong>{alertCount}</strong><small>Source : backend</small></article>
+        <article className="metric red"><span>Incidents ouverts</span><strong>{attackCount}</strong><small>Source : backend</small></article>
+        <article className="metric amber"><span>Alertes récentes</span><strong>{alertCount}</strong><small>5 dernières minutes</small></article>
         <article className="metric purple"><span>Indice de risque</span><strong>{riskValue}</strong><small>Niveau {risk?.level || 'indisponible'}</small></article>
       </section>
       <section className="two-column">
@@ -496,24 +601,26 @@ function Security({ stats, risk, events, onAttack }) {
   );
 }
 
-function Missions({ missions, drone, droneFreshness, onMission }) {
+function Missions({ missions }) {
   return (
     <section className="two-column">
       <article className="panel">
         <div className="panel-heading">
-          <div><p className="eyebrow">DRONE-01</p><h2>État de la flotte</h2></div>
-          <span className={`status-chip ${droneFreshness === 'LIVE' ? 'healthy' : droneFreshness === 'STALE' ? 'warning' : 'unavailable'}`}>{droneFreshness}</span>
+          <div><p className="eyebrow">SCÉNARIO CONCEPTUEL</p><h2>Inspection par drone</h2></div>
+          <span className="status-chip warning">NON OPÉRATIONNEL</span>
         </div>
         <div className="mission-hero">
           <div className="robot-avatar large">✦</div>
           <div>
-            <strong>{drone.status == null ? 'État indisponible' : drone.status === 'idle' ? 'Prêt à intervenir' : 'Intervention en cours'}</strong>
-            <p>{drone.mission_id ? `Mission ${drone.mission_id}` : 'Le drone attend sa prochaine mission.'}</p>
-            <div className="battery"><span style={{ width: `${typeof drone.battery === 'number' ? drone.battery : 0}%` }} /></div>
-            <small>Batterie : {drone.telemetry_received ? displayValue(drone.battery, value => `${value}%`) : 'N/A'} · Position : {drone.telemetry_received && hasPosition(drone.position) ? `${drone.position.x}, ${drone.position.y}` : 'indisponible'}</small>
+            <strong>Assistance à la surveillance portuaire</strong>
+            <p>Une extension future pourrait intégrer des missions d’inspection aérienne.</p>
+            <small>
+              Exemples : contrôle visuel des zones de stockage, observation des équipements
+              et appui aux équipes lors d’incidents.
+            </small>
+            <p><small>Cette fonctionnalité n’est pas implémentée dans la plateforme actuelle.</small></p>
           </div>
         </div>
-        <button className="primary-button compact" onClick={onMission}>Créer une mission d’inspection <span>→</span></button>
       </article>
       <article className="panel">
         <p className="eyebrow">HISTORIQUE</p>
@@ -627,7 +734,7 @@ function History({ device, history, close, report }) {
         </div>
         <footer>
           <button className="outline-button" onClick={close}>Fermer</button>
-          <button className="primary-button compact" onClick={() => report(device)}>Générer le PDF <span>→</span></button>
+          <button className="primary-button compact" onClick={report}>Générer le PDF <span>→</span></button>
         </footer>
       </section>
     </div>

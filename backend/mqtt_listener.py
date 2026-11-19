@@ -1,4 +1,4 @@
-"""Non-blocking MQTT ingress for sensor and autonomous-drone messages."""
+"""Non-blocking MQTT ingress for SecurIoT-Port telemetry."""
 import asyncio
 import json
 import threading
@@ -18,8 +18,6 @@ from backend.schemas.siem import SiemEventIn
 from smart_port.communication.device_gateway import DeviceGateway
 from smart_port.data.data_lake import write_event
 from smart_port.config import settings
-from backend.events.normalizer import EventNormalizer
-from backend.events.contracts import Transport as EventTransport
 
 update_queue: asyncio.Queue[dict[str, Any]] | None = None
 ingress_queue: asyncio.Queue[dict[str, Any]] | None = None
@@ -102,19 +100,31 @@ async def _publish_dashboard(message: dict[str, Any]) -> None:
 
 async def process_message(raw_data: dict[str, Any]) -> None:
     data = DeviceGateway.normalize(raw_data, transport="mqtt")
-    common_event = EventNormalizer.normalize(raw_data, EventTransport.MQTT)
-    device_id, dev_type, topic = data["device_id"], data["type"], data.get("mqtt_topic", "")
+    # Validate against the identity presented on the wire, then store/publish
+    # under the canonical registry id so the dashboard inventory stays truthful.
+    from smart_port.edge.device_registry import canonical_device_id
+
+    original_id = data.get("device_id") or "unknown"
     db = SessionLocal()
     try:
-        write_event("telemetry", data)
         packet_size = len(json.dumps(data))
+        net_info = process_network_data(
+            original_id,
+            data.get("ip_src", "unknown"),
+            data.get("mac_src", "unknown"),
+            packet_size,
+        )
+        decision = make_decision(data, net_info)
+        device_id = canonical_device_id(original_id)
+        data["device_id"] = device_id
+        dev_type = data["type"]
+
+        write_event("telemetry", data)
         db.add(SensorReading(device_id=device_id, type=dev_type, value=data.get("value"), unit=data.get("unit"),
                              status=data.get("status"), people_count=data.get("people_count"),
                              latitude=data.get("latitude"), longitude=data.get("longitude"),
                              timestamp=data.get("timestamp", time.time()), ip_src=data.get("ip_src", "unknown"),
                              mac_src=data.get("mac_src", "unknown"), port_src=data.get("port_src", 1883), packet_size=packet_size))
-        net_info = process_network_data(device_id, data.get("ip_src", "unknown"), data.get("mac_src", "unknown"), packet_size)
-        decision = make_decision(data, net_info)
         for alert_type, message in decision["alerts"]:
             SmartPortSiem(db).collect(SiemEventIn(source="network" if alert_type in {"network_flood", "unknown_ip"} else "sensor",
                                                    event_type=alert_type, message=message, device_id=device_id,
@@ -125,11 +135,14 @@ async def process_message(raw_data: dict[str, Any]) -> None:
         if decision["anomaly"] or decision["threat_level"] == "red":
             security_types = {"flood", "network_flood", "unknown_ip", "bad_token", "wrong_topic", "unknown_device"}
             trigger = "network_attack" if any(kind in security_types for kind, _ in decision["alerts"]) else "ml_anomaly"
-            action = ActionDispatcher(db).handle_detection(device_id, trigger,
+            action = ActionDispatcher(db).handle_detection(
+                device_id,
+                trigger,
                 "critical" if decision["threat_level"] == "red" else "high",
-                "; ".join(message for _, message in decision["alerts"]) or f"Anomaly on {dev_type}",
-                decision.get("dispatch_recommended", False),
-                create_incident=trigger != "ml_anomaly")
+                "; ".join(message for _, message in decision["alerts"])
+                or f"Anomaly on {dev_type}",
+                create_incident=trigger != "ml_anomaly",
+            )
         await _publish_dashboard({"event": "telemetry", "device_id": device_id, "type": dev_type,
                                   "status": decision["threat_level"], "last_value": data.get("value") or data.get("status"),
                                   "alerts": [message for _, message in decision["alerts"]], "anomaly_score": decision["anomaly_score"],

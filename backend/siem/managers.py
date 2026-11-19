@@ -11,6 +11,16 @@ from backend.database.models import Alert, Incident, SiemEvent
 class AlertManager:
     DEDUP_WINDOW_SECONDS = 5
 
+    # Audit / lifecycle noise must stay in siem_events, not the alerts table.
+    NON_SECURITY_TYPES = frozenset({
+        "http_request",
+        "login_success",
+        "telemetry_ingested",
+        "drone_mission_started",
+        "drone_mission_completed",
+        "drone_mission_rejected",
+    })
+
     @staticmethod
     def _utc_timestamp(value: datetime) -> float:
         return (value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value).timestamp()
@@ -27,6 +37,8 @@ class AlertManager:
 
     def create(self, db: Session, event: SiemEvent, severity: str, correlation: str | None) -> Alert | None:
         if severity in {"info", "low"}:
+            return None
+        if (event.event_type or "") in self.NON_SECURITY_TYPES:
             return None
         message = correlation or event.message
         prior_event = (db.query(SiemEvent.id)
@@ -50,11 +62,16 @@ class AlertManager:
 
 
 class IncidentManager:
+    NON_SECURITY_TYPES = AlertManager.NON_SECURITY_TYPES
+
     def create_or_update(self, db: Session, event: SiemEvent, severity: str, correlation: str | None) -> Incident | None:
         if severity not in {"high", "critical"}:
             return None
+        if (event.event_type or "") in self.NON_SECURITY_TYPES:
+            return None
         incident = (db.query(Incident).filter(Incident.device_id == (event.device_id or "platform"))
-                    .filter(Incident.anomaly_type == event.event_type).filter(Incident.status != "resolved").first())
+                    .filter(Incident.anomaly_type == event.event_type).filter(Incident.status != "resolved")
+                    .order_by(Incident.last_seen.desc()).first())
         if incident:
             incident.severity = severity
             incident.description = correlation or event.message

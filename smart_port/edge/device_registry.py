@@ -42,9 +42,38 @@ LEGACY_DEVICE_ALIASES = {
     "pres_01": ("tk_pres444", "port/parking/presence"),
 }
 
+# Map legacy demo identities onto the canonical registry inventory used by the UI.
+ALIAS_TO_CANONICAL = {
+    "temp_01": "grue_G01",
+    "hum_01": "station_H01",
+    "vib_01": "portique_P01",
+    "cam_01": "camera_Q01",
+    "gps_01": "camion_C12",
+    "gate_01": "portail_N01",
+    "smoke_01": "entrepot_E01",
+    "pres_01": "parking_P01",
+}
+
 
 def known_devices() -> Iterable[str]:
     return (*DEVICE_REGISTRY.keys(), *LEGACY_DEVICE_ALIASES.keys())
+
+
+def canonical_device_id(device_id: str | None) -> str:
+    """Resolve legacy attack/sim IDs to the registry device shown on the dashboard."""
+    if not device_id:
+        return "unknown"
+    return ALIAS_TO_CANONICAL.get(device_id, device_id)
+
+
+def device_identity_keys(device_id: str) -> tuple[str, ...]:
+    """All ids that represent one logical equipment (canonical + aliases)."""
+    canonical = canonical_device_id(device_id)
+    aliases = [alias for alias, target in ALIAS_TO_CANONICAL.items() if target == canonical]
+    ordered = [canonical, *aliases]
+    if device_id not in ordered:
+        ordered.append(device_id)
+    return tuple(dict.fromkeys(ordered))
 
 
 def validate_identity(device_id: str, token: str, topic: str) -> list[tuple[str, str]]:
@@ -55,6 +84,10 @@ def validate_identity(device_id: str, token: str, topic: str) -> list[tuple[str,
         return [("unknown_device", f"Unregistered edge device {device_id}")]
     expected_token, expected_topic = expected
     allowed_topics = {expected_topic}
+    # Canonical registry devices also accept their legacy demo topic.
+    for alias, target in ALIAS_TO_CANONICAL.items():
+        if target == device_id and alias in LEGACY_DEVICE_ALIASES:
+            allowed_topics.add(LEGACY_DEVICE_ALIASES[alias][1])
     alerts = []
     if token != expected_token:
         alerts.append(("bad_token", f"Invalid device credential for {device_id}"))

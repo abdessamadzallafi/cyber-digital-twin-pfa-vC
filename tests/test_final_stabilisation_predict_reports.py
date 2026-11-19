@@ -6,16 +6,20 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.core.config import settings
 from backend.main import app
 from backend.ml.prediction_service import PredictionService
 
-client = TestClient(app)
+@pytest.fixture
+def client():
+    with TestClient(app) as client:
+        yield client
 
 
-def test_ai_predict_returns_json_serializable_values():
+def test_ai_predict_returns_json_serializable_values(client):
     """BUG1: /api/v1/ai/predict must return HTTP 200 with native Python values."""
     # Authenticate
     r = client.post("/token", data={"username": "admin", "password": settings.demo_admin_password})
@@ -45,7 +49,7 @@ def test_ai_predict_returns_json_serializable_values():
         assert isinstance(item["score"], float)
 
 
-def test_siem_reports_get_returns_200():
+def test_siem_reports_get_returns_200(client):
     """BUG2: GET /api/v1/siem/reports must return HTTP 200."""
     r = client.post("/token", data={"username": "admin", "password": settings.demo_admin_password})
     assert r.status_code == 200

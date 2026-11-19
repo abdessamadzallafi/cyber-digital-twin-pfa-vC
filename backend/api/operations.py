@@ -7,10 +7,11 @@ enough for the demo and map directly to production service boundaries.
 from pathlib import Path
 from fastapi import APIRouter, Depends, Query
 
-from backend.core.dependencies import CurrentUser, get_db, get_siem_service
-from backend.database.models import Alert, Incident, NetworkFlow, SensorReading, SiemEvent
+from backend.core.dependencies import CurrentUser, get_db, get_platform_service, get_siem_service
+from backend.database.models import Alert, NetworkFlow, SensorReading, SiemEvent
+from backend.services.platform_service import PlatformService
 from backend.siem.platform import SmartPortSiem
-from smart_port.data.data_lake import lake_summary
+from smart_port.data.data_lake import lake_summary, read_events
 from smart_port.edge.device_registry import DEVICE_REGISTRY
 
 router = APIRouter(prefix="/api/v1/ops", tags=["Operations"])
@@ -62,10 +63,64 @@ def analytics(db=Depends(get_db), _: dict = CurrentUser):
 
 
 @router.get("/statistics")
-def statistics(db=Depends(get_db), siem: SmartPortSiem = Depends(get_siem_service), _: dict = CurrentUser):
-    return {"devices": len(DEVICE_REGISTRY), "telemetry": db.query(SensorReading).count(),
-            "alerts": db.query(Alert).count(), "incidents_open": db.query(Incident).filter(Incident.status != "resolved").count(),
-            "risk": siem.risk.calculate(db), "data_lake": lake_summary()}
+def statistics(db=Depends(get_db), siem: SmartPortSiem = Depends(get_siem_service),
+               service: PlatformService = Depends(get_platform_service), _: dict = CurrentUser):
+    """Return live operational KPIs.
+
+    Historical totals remain available in the database, but dashboard KPIs
+    describe recent activity so that controlled simulations are observable.
+    """
+    from datetime import datetime, timedelta
+
+    now = datetime.utcnow()
+    recent_since = now - timedelta(minutes=5)
+
+    security_alert_types = [
+        "flood",
+        "network_flood",
+        "unknown_ip",
+        "bad_token",
+        "wrong_topic",
+        "unknown_device",
+        "ml_anomaly",
+        "ml_signal",
+        "spoofing",
+        "impossible_values",
+        "dos",
+        "network_anomaly",
+    ]
+
+    open_incidents = siem.count_open_incidents()
+
+    recent_alerts = (
+        db.query(Alert)
+        .filter(
+            Alert.created_at >= recent_since,
+            Alert.alert_type.in_(security_alert_types),
+        )
+        .count()
+    )
+
+    online_devices = service.count_online_devices()
+
+    return {
+        "devices": online_devices,
+        "devices_registered": len(DEVICE_REGISTRY),
+        "telemetry": db.query(SensorReading).count(),
+        "alerts": recent_alerts,
+        # Alias kept for dashboard notification badge compatibility.
+        "total_alerts": recent_alerts,
+        "incidents_open": open_incidents,
+        "risk": siem.risk.calculate(db),
+        "data_lake": lake_summary(),
+    }
+
+
+@router.get("/missions")
+def missions(limit: int = Query(50, ge=1, le=200), _: dict = CurrentUser):
+    """Return recent simulated operational missions from the Data Lake."""
+    return read_events("missions", limit)
+
 
 
 @router.get("/reports")

@@ -84,7 +84,7 @@ class SiemEvent(Base):
     """Normalized immutable event collected from every Smart Port subsystem."""
     __tablename__ = "siem_events"
     id = Column(Integer, primary_key=True, index=True)
-    source = Column(String, index=True)       # mqtt, http, drone, ros2, auth, sensor, network
+    source = Column(String, index=True)       # mqtt, http, udp, auth, sensor, network
     event_type = Column(String, index=True)
     device_id = Column(String, index=True, nullable=True)
     severity = Column(String, index=True, default="info")

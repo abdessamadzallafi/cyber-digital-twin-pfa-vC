@@ -39,6 +39,39 @@ def write_event(stream: str, event: Mapping[str, Any]) -> Path:
     return target
 
 
+def read_events(stream: str, limit: int = 100) -> list[dict[str, Any]]:
+    """Read the most recent JSONL events from one data-lake stream."""
+    stream = _stream_path(stream)
+    limit = max(1, min(limit, 1000))
+    root = Path(settings.data_lake_path) / stream
+
+    if not root.exists():
+        return []
+
+    records: list[dict[str, Any]] = []
+    for path in sorted(root.glob("*.jsonl"), reverse=True):
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+
+        for line in reversed(lines):
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            if isinstance(record, dict):
+                # Never expose stored credentials/tokens through the API.
+                record.pop("token", None)
+                records.append(record)
+
+            if len(records) >= limit:
+                return records
+
+    return records
+
+
 def lake_summary() -> dict[str, dict[str, int]]:
     """Return a cheap, dependency-free catalogue for the dashboard/API."""
     root = Path(settings.data_lake_path)
