@@ -18,6 +18,41 @@ The platform brings together the following capabilities:
 - **Incident reporting:** generate reports from platform events.
 - **Simulated response demonstration:** illustrate a response workflow, including simulated inspection missions where enabled.
 
+## Screenshots
+
+The following screenshots illustrate the main interfaces and features of SecurIoT-Port.
+
+### Main Dashboard
+![Main Dashboard](docs/images/dashboard.png)
+
+### IoT Equipment
+![IoT Equipment](docs/images/Equipements.png)
+
+### Security Monitoring
+![Security Monitoring](docs/images/security%20monitoring.png)
+
+### Incidents
+![Incidents](docs/images/Incidents.png)
+
+### Activity Log
+![Activity Log](docs/images/Activity%20log.png)
+
+### Data Lake
+![Data Lake](docs/images/Data%20Lake.png)
+
+### Backend
+![Backend](docs/images/Backend.png)
+
+### Missions
+![Missions](docs/images/Missions.png)
+
+### Reports
+![Reports](docs/images/Reports.png)
+
+### Additional Dashboard View
+![Additional Dashboard View](docs/images/Dashboard%20at%20the%20bottom%20.png)
+
+
 ## Architecture
 
 At a high level, the platform is organized around these components:
